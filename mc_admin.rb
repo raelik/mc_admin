@@ -23,6 +23,9 @@ module MC
     # If you need to change this, you're doing something weird. Good luck!
     SERVER_PROPERTIES = File.join(__dir__, 'server.properties').freeze
 
+    # This is for a default Forge install. Change this if needed.
+    SERVER_START_CMD = './run.sh'
+
     FS = 31.chr # This low-ASCII control character is used as a delimiter for the ps command.
 
     attr_reader :properties, :rcon, :pid, :state
@@ -76,7 +79,7 @@ module MC
         end
 
         ps_cmd = result.select { |r| r[:ppid].to_i == pid }.first
-        raise AdminError, 'ps user-defined format syntax invalid.' unless ps_cmd&.dig(:args) =~ /^#{cmd}/
+        raise AdminError, 'ps format syntax invalid.' unless ps_cmd&.dig(:args) =~ /^#{cmd}/
 
         result
       end
@@ -115,66 +118,95 @@ module MC
       raise AdminError, 'Could not load server.properties.'
     end
 
-    # Spins up a background thread to watch for a server PID change. Will raise an AdminError
-    # if the PID does not change in 60 seconds, as this indicates some sort of exceptional
-    # problem (i.e. the server will not start, or shut down)
+    # Spins up a background thread to watch for a server PID change while yielding to a block that
+    # will cause the change. Will raise an AdminError if the PID does not change in 60 seconds, as
+    # this indicates some sort of exceptional problem (i.e. the server won't start, or shut down)
     def refresh_pid
-      prev_pid = pid.dup
+      retry_t = nil
+      return unless block_given?
+
+      old_pid = pid.dup
       retries = 60
-      Thread.new do
-        while retries > 0
+      error   = false
+      retry_t = Thread.new do
+        while !error && retries > 0
           @pid = get_server_pid
-          retries -= (prev_pid == pid ? 1 : 60)
-          sleep 1
+          retries -= (old_pid == pid ? 1 : 60)
+          sleep 1 if retries > 0
         end
 
-        if prev_pid == pid
-          raise AdminError, "Timed out waiting for server to #{prev_pid.nil? ? 'start' : 'stop'}."
+        if !error && old_pid == pid
+          raise AdminError, "Timed out waiting for server to #{old_pid.nil? ? 'start' : 'stop'}."
         end
+      end
+
+      yield
+    rescue => e
+      error = true
+      raise e
+    ensure
+      retry_t&.join
+    end
+
+    # Used by the stop and restart methods to trap signals in order to abort a pending server
+    # shutdown or restart.
+    def delay_or_abort_shutdown(delay, abort_msg)
+      # Do a funky sleep loop here so unhandled signals don't cause the delay
+      # to start over.
+      begin
+        (sleep(delay - delay.floor) && delay = delay.to_i) if delay.is_a?(Float)
+        (sleep(1) && delay -= 1) while delay > 0
+      rescue SignalException => e
+        retry if %w(SIGUSR1 SIGUSR2).include?(e.to_s) # Ignore these signals.
+
+        # If someone does a CTRL-C or if the script gets a signal while it's waiting to shut
+        # down the server, send a message about canceling the restart.
+        send_message(announce_json(abort_msg), true) if running?
+        raise
       end
     end
 
     # Starts the Minecraft server in a detached tmux session, and waits for the Java process to
     # start. The tmux session will close if the server is stopped or crashes.
     def start(session)
-      thread = refresh_pid
-      tmux_cmd(:new_session, session)
-
-      thread.join
+      refresh_pid { tmux_cmd(:new_session, session) }
       @state = :running
     end
 
     # Stops the Minecraft server using RCON, and waits for the Java process to exit.
     def stop(delay=nil)
-      unless delay.to_f == 0.0
-        send_message(announce_json('The server is shutting down'), true)
-        sleep delay
+      delay = delay.to_f # Just to be safe...
+
+      unless delay == 0.0
+        send_message(announce_json('The server is shutting down', delay), true)
+        delay_or_abort_shutdown(delay, 'The shutdown has been aborted. Sorry!')
       end
 
-      thread = refresh_pid
-      do_rcon do |rcon|
-        rcon.execute('save-all')
-        sleep 1
-        rcon.execute('stop')
-        sleep 1
+      refresh_pid do
+        do_rcon do |rcon|
+          rcon.execute('save-all')
+          sleep 1
+          rcon.execute('stop')
+          sleep 1
+        end
       end
-
-      thread.join
       @state = :stopped
     end
 
     # Restarts the Minecraft server.
     def restart(session, delay=nil)
-      unless delay.to_f == 0.0
-        send_message(announce_json('The server is restarting'), true)
-        sleep delay
-      end
+      delay = delay.to_f # Just to be safe...
 
-      stop unless stopped?
+      unless stopped?
+        unless delay == 0.0
+          send_message(announce_json('The server is restarting', delay), true)
+          delay_or_abort_shutdown(delay, 'The restart had been aborted. Sorry!')
+        end
 
-      # Wait for the tmux session to stop.
-      while tmux_cmd(:list_sessions).include?(session) do
-        sleep 1
+        stop
+
+        # Wait for the tmux session to stop.
+        sleep 1 until !tmux_cmd(:list_sessions).include?(session)
       end
 
       start(session)
@@ -201,21 +233,25 @@ module MC
       end
     end
 
-    # Used to create the stop/restart announce raw JSON text format
-    def announce_json(msg)
-      { color: 'yellow', text: '[SERVER ANNOUNCEMENT] ', extra: [
+    # Used to create announcement raw JSON messages
+    def announce_json(msg, delay=nil)
+      extra = delay.nil? ? [{ color: 'white', text: msg}] : [
         { color: 'white', text: "#{msg} in " },
-        { color: 'aqua', text: (delay / 60.0).to_s },
-        { color: 'white', text: ' minutes. Please log off.'} ] }.to_json
+        { color: 'aqua',  text: ('%g minutes' % [delay / 60.0]) },
+        { color: 'white', text: '. Please log off.'}
+      ]
+
+      { color: 'yellow', text: '[SERVER ANNOUNCEMENT] ', extra: extra }.to_json
     end
 
     # Wrapper for tmux commands. These should be the only ones required, but any additions should
-    # be added to this method. If you're running a non-Forge server, or have your own custom server
-    # start script, feel free to change 'run.sh' to a different command for :new_session.
+    # be added to this method.
     def tmux_cmd(cmd, session=nil)
       case cmd
+        when :attach_session
+          exec("tmux attach-session -t #{session}")
         when :new_session
-          `tmux new-session -d -s #{session} 'cd #{__dir__} && ./run.sh'`
+          `tmux new-session -d -s #{session} 'cd #{__dir__} && #{SERVER_START_CMD}'`
         when :list_sessions
           `tmux list-sessions -F '\#{session_name}' 2> /dev/null`.split("\n")
       end
@@ -234,7 +270,7 @@ module MC
   end
 
   # This class sets up the actual command-line options used by the script, as the AdminCommand
-  # class is not intended to be run directly.
+  # class is not intended to have 'run()' called on it directly.
   class Admin < Clamp::Command
     VERSION = '1.0.0'
     COLORS  = %w(black dark_blue dark_green dark_aqua dark_red dark_purple gold
@@ -249,8 +285,9 @@ module MC
     self.description = <<-DESC
       A simple Minecraft (Forge) server administration script. Must be installed and run from the
       current working directory of the server being administered (alongside server.properties),
-      and the system must have tmux installed and have a version of the ps command that supports
-      AIX format descriptors in the -o option (i.e. all modern Linux distributions).
+      the system must have tmux installed, and it needs a version of the ps command that supports
+      AIX format descriptors and arbitrary delimiters with the -o option (i.e. all modern Linux
+      distributions using procps-ng).
     DESC
 
     option '--version', :flag, 'Show version.' do
@@ -271,7 +308,7 @@ module MC
         option.
       DESC
 
-      option ['-s', '--session'], 'SESSION', 'The tmux session name.', default: TMUX_SESSION
+      option %w(-s --session), 'SESSION', 'The tmux session name.', default: TMUX_SESSION
 
       def execute
         super do
@@ -288,11 +325,11 @@ module MC
         taking the server down. The tmux session will automatically close upon shutdown.
       DESC
 
-      option ['-d', '--delay'], 'DELAY', 'Seconds to delay before stopping.', default: 300 do |d|
+      option %w(-d --delay), 'DELAY', 'Seconds to delay before stopping.', default: 300 do |d|
         Float(d) rescue (raise ArgumentError, "#{d} is not a valid number of seconds.")
       end
 
-      option ['-n', '--now'], :flag, 'Stop immediately without a message.'
+      option %w(-n --now), :flag, 'Stop immediately without a message.'
 
       def execute
         super do
@@ -316,13 +353,15 @@ module MC
         option.
       DESC
 
-      option ['-s', '--session'], 'SESSION', 'The tmux session name.', default: TMUX_SESSION
+      option %w(-s --session), 'SESSION', 'The tmux session name.', default: TMUX_SESSION
 
-      option ['-d', '--delay'], 'DELAY', 'Seconds to delay before restarting.', default: 300 do |d|
-        Float(d) rescue (raise ArgumentError, "#{d} is not a valid number of seconds.")
+      option %w(-d --delay), 'DELAY', 'Seconds to delay before restarting.', default: 300 do |d|
+        f = Float(d) rescue (raise ArgumentError, "#{d} is not a valid number of seconds.")
+        raise ArgumentError, 'DELAY cannot be negative.' if f.negative
+        f
       end
 
-      option ['-n', '--now'], :flag, 'Restart immediately without a message.'
+      option %w(-n --now), :flag, 'Restart immediately without a message.'
 
       def execute
         super do
@@ -334,11 +373,25 @@ module MC
 
     subcommand 'status', 'Gets the status of the server.', AdminCommand do
       self.description = <<-DESC
-        Determines the status of the server (running or stopped), and also returns the PID if it is running.
+        Determines the status of the server (running or stopped), and also returns the PID of the
+        server's Java process (if it is running).
       DESC
 
       def execute
         super { status }
+      end
+    end
+
+    subcommand 'attach', 'Attaches to the tmux session.', AdminCommand do
+      self.description = <<-DESC
+        Runs 'tmux attach-session' with the correct session name. Can be overridden.
+      DESC
+
+      option %w(-s --session), 'SESSION', 'The tmux session name.', default: TMUX_SESSION
+
+      def execute
+        raise AdminError, 'Server is not running.' if stopped?
+        tmux_cmd(:attach_session, session)
       end
     end
 
@@ -350,14 +403,14 @@ module MC
         the message format.
       DESC
 
-      option ['-c', '--color'], 'COLOR', COLOR_OPTION_MSG do |c|
+      option %w(-c --color), 'COLOR', COLOR_OPTION_MSG do |c|
         unless COLORS.include?(c) || c =~ /^#[0-9A-Fa-f]{6}$/
           raise ArgumentError, "Invalid color specified. Valid colors:\n\t" +
                                VALID_COLOR_TEXT.join(",\n\t")
         end
       end
 
-      option ['-j', '--json'], :flag, 'Message is in raw JSON text format. COLOR will be ignored.'
+      option %w(-j --json), :flag, 'Message is in raw JSON text format. COLOR will be ignored.'
 
       parameter 'MESSAGE', 'The message to send.'
 
@@ -372,14 +425,17 @@ module MC
 
     subcommand 'rcon', 'Send an arbitrary command to the server over RCON.', AdminCommand do
       self.description = <<-DESC
-        Immediately sends a command to the server over RCON. There is no filtering or confirmation, so USE WITH CAUTION.
+        Immediately sends a command to the server over RCON. There is no filtering or confirmation,
+        so USE WITH CAUTION.
       DESC
 
-      option ['-s', '--segmented'], :flag, 'Expect the server to send a segmented response for this command.'
+      option %w(-s --segmented), :flag, 'Expect the server to send a segmented response.'
 
-      option ['-w', '--wait'], 'WAIT', "How many seconds to wait after sending the trash packet. This only\n" +
-                                       'applies to segmented responses.', default: 0.0 do |w|
-        Float(w) rescue (raise ArgumentError, "#{w} is not a valid number of seconds.")
+      option %w(-w --wait), 'WAIT', "How many seconds to wait after sending the trash packet.\n" +
+                                    'Ignored for non-segmented responses.', default: 0.0 do |w|
+        f = Float(w) rescue (raise ArgumentError, "#{w} is not a valid number of seconds.")
+        raise ArgumentError, 'WAIT cannot be negative.' if f.negative
+        f
       end
 
       parameter 'COMMAND', 'The command to send.'

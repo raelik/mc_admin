@@ -6,8 +6,9 @@ Usage:
 
   A simple Minecraft (Forge) server administration script. Must be installed and run from the
   current working directory of the server being administered (alongside server.properties),
-  and the system must have tmux installed and have a version of the ps command that supports
-  AIX format descriptors in the -o option (i.e. all modern Linux distributions).
+  the system must have tmux installed, and it needs a version of the ps command that supports
+  AIX format descriptors and arbitrary delimiters with the -o option (i.e. all modern Linux
+  distributions using procps-ng).
 
 Parameters:
     SUBCOMMAND    subcommand
@@ -18,6 +19,7 @@ Subcommands:
     stop          Broadcasts a message and stops the server.
     restart       Broadcasts a message and restarts the server.
     status        Gets the status of the server.
+    attach        Attaches to the tmux session.
     send          Sends a message to all connected players.
     rcon          Send an arbitrary command to the server over RCON.
 
@@ -25,6 +27,112 @@ Options:
     --version     Show version.
     -h, --help    print help
 ```
+
+<details>
+  <summary><h3>Subcommand Help</h3></summary>
+  <div class="notranslate position-relative overflow-auto">
+    <pre class="notranslate"><code>$ ./mc_admin.rb start --help
+Usage:
+    mc_admin.rb start [OPTIONS]
+
+  Starts the Minecraft server (using run.sh, which the Forge installer creates) with tmux
+  to allow for easy administration. This assumes the 'nogui' option was added to run.sh, but
+  depending on how this script is being run (via cron, etc), it may still function with the
+  server GUI enabled.
+
+  By default, this script uses the basename of the current working directory as the tmux
+  session name. This can be overridden by putting a different name in a .tmux_session file
+  in the Minecraft server root directory alongside this script, or you can use the --session
+  option.
+
+Options:
+    -s, --session SESSION    The tmux session name. (default: "MCE2")
+    -h, --help               print help</code></pre>
+    <pre class="notranslate"><code>$ ./mc_admin.rb stop --help
+Usage:
+    mc_admin.rb stop [OPTIONS]
+
+  Stops the Minecraft server using RCON. By default, it sends a server-wide message to warn
+  users of the pending shutdown (which happens in 5 minutes by default), before actually
+  taking the server down. The tmux session will automatically close upon shutdown.
+
+Options:
+    -d, --delay DELAY    Seconds to delay before stopping. (default: 300)
+    -n, --now            Stop immediately without a message.
+    -h, --help           print help</code></pre>
+    <pre class="notranslate"><code>$ ./mc_admin.rb restart --help
+Usage:
+    mc_admin.rb restart [OPTIONS]
+
+  Restarts the Minecraft server. This is functionally identical to using the stop command
+  followed by the start command, except that the script will wait for the tmux session to
+  close before restarting. Since this command will ignore the stop command if the server is
+  already stopped, it is a safe alternative to the start command.
+
+  By default, this script uses the basename of the current working directory as the tmux
+  session name. This can be overridden by putting a different name in a .tmux_session file
+  in the Minecraft server root directory alongside this script, or you can use the --session
+  option.
+
+Options:
+    -s, --session SESSION    The tmux session name. (default: "MCE2")
+    -d, --delay DELAY        Seconds to delay before restarting. (default: 300)
+    -n, --now                Restart immediately without a message.
+    -h, --help               print help</code></pre>
+    <pre class="notranslate"><code>$ ./mc_admin.rb status --help
+Usage:
+    mc_admin.rb status [OPTIONS]
+
+  Determines the status of the server (running or stopped), and also returns the PID of the
+  server's Java process (if it is running).
+
+Options:
+    -h, --help    print help</code></pre>
+    <pre class="notranslate"><code>$ ./mc_admin.rb attach --help
+Usage:
+    mc_admin.rb attach [OPTIONS]
+
+  Runs 'tmux attach-session' with the correct session name. Can be overridden.
+
+Options:
+    -s, --session SESSION    The tmux session name. (default: "MCE2")
+    -h, --help               print help</code></pre>
+    <pre class="notranslate"><code>$ ./mc_admin.rb send --help
+Usage:
+    mc_admin.rb send [OPTIONS] MESSAGE
+
+  Broadcasts a message to all players connected to the server. By default, it does this in a
+  single color (white), which can be changed with the --color option. Alternatively, using
+  the --json option allows Minecraft's raw JSON text format to be used for full control of
+  the message format.
+
+Parameters:
+    MESSAGE              The message to send.
+
+Options:
+    -c, --color COLOR    Color of plain text message. Ignored for JSON. Valid colors:
+                           black, dark_blue, dark_green, dark_aqua, dark_red, dark_purple, gold, gray,
+                           dark_gray, blue, green, aqua, red, light_purple, yellow, white,
+                           or a 6-digit hexadecimal code in '#<hex code>' format.
+    -j, --json           Message is in raw JSON text format. COLOR will be ignored.
+    -h, --help           print help</code></pre>
+    <pre class="notranslate"><code>$ ./mc_admin.rb rcon --help
+Usage:
+    mc_admin.rb rcon [OPTIONS] COMMAND
+
+  Immediately sends a command to the server over RCON. There is no filtering or confirmation,
+  so USE WITH CAUTION.
+
+Parameters:
+    COMMAND            The command to send.
+
+Options:
+    -s, --segmented    Expect the server to send a segmented response.
+    -w, --wait WAIT    How many seconds to wait after sending the trash packet.
+                       Ignored for non-segmented responses. (default: 0.0)
+    -h, --help         print help</code></pre>
+  </div>
+</details>
 
 ---
 
