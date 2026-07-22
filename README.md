@@ -29,9 +29,11 @@ Options:
 ```
 
 <details>
-  <summary><h3>Subcommand Help</h3></summary>
-  <div class="notranslate position-relative overflow-auto">
-    <pre class="notranslate"><code>$ ./mc_admin.rb start --help
+
+<summary><h3>Subcommand Help</h3></summary>
+
+```
+$ ./mc_admin.rb start --help
 Usage:
     mc_admin.rb start [OPTIONS]
 
@@ -47,8 +49,11 @@ Usage:
 
 Options:
     -s, --session SESSION    The tmux session name. (default: "MCE2")
-    -h, --help               print help</code></pre>
-    <pre class="notranslate"><code>$ ./mc_admin.rb stop --help
+    -h, --help               print help
+```
+
+```
+$ ./mc_admin.rb stop --help
 Usage:
     mc_admin.rb stop [OPTIONS]
 
@@ -59,8 +64,11 @@ Usage:
 Options:
     -d, --delay DELAY    Seconds to delay before stopping. (default: 300)
     -n, --now            Stop immediately without a message.
-    -h, --help           print help</code></pre>
-    <pre class="notranslate"><code>$ ./mc_admin.rb restart --help
+    -h, --help           print help
+```
+
+```
+$ ./mc_admin.rb restart --help
 Usage:
     mc_admin.rb restart [OPTIONS]
 
@@ -78,8 +86,11 @@ Options:
     -s, --session SESSION    The tmux session name. (default: "MCE2")
     -d, --delay DELAY        Seconds to delay before restarting. (default: 300)
     -n, --now                Restart immediately without a message.
-    -h, --help               print help</code></pre>
-    <pre class="notranslate"><code>$ ./mc_admin.rb status --help
+    -h, --help               print help```
+```
+
+```
+$ ./mc_admin.rb status --help
 Usage:
     mc_admin.rb status [OPTIONS]
 
@@ -87,8 +98,11 @@ Usage:
   server's Java process (if it is running).
 
 Options:
-    -h, --help    print help</code></pre>
-    <pre class="notranslate"><code>$ ./mc_admin.rb attach --help
+    -h, --help    print help```
+```
+
+```
+$ ./mc_admin.rb attach --help
 Usage:
     mc_admin.rb attach [OPTIONS]
 
@@ -96,8 +110,11 @@ Usage:
 
 Options:
     -s, --session SESSION    The tmux session name. (default: "MCE2")
-    -h, --help               print help</code></pre>
-    <pre class="notranslate"><code>$ ./mc_admin.rb send --help
+    -h, --help               print help```
+```
+
+```
+$ ./mc_admin.rb send --help
 Usage:
     mc_admin.rb send [OPTIONS] MESSAGE
 
@@ -115,8 +132,11 @@ Options:
                            dark_gray, blue, green, aqua, red, light_purple, yellow, white,
                            or a 6-digit hexadecimal code in '#<hex code>' format.
     -j, --json           Message is in raw JSON text format. COLOR will be ignored.
-    -h, --help           print help</code></pre>
-    <pre class="notranslate"><code>$ ./mc_admin.rb rcon --help
+    -h, --help           print help```
+```
+
+```
+$ ./mc_admin.rb rcon --help
 Usage:
     mc_admin.rb rcon [OPTIONS] COMMAND
 
@@ -130,8 +150,9 @@ Options:
     -s, --segmented    Expect the server to send a segmented response.
     -w, --wait WAIT    How many seconds to wait after sending the trash packet.
                        Ignored for non-segmented responses. (default: 0.0)
-    -h, --help         print help</code></pre>
-  </div>
+    -h, --help         print help
+```
+
 </details>
 
 ---
