@@ -17,8 +17,10 @@ module MC
   # this class as an explicit subcommand class for each command.
   class AdminCommand < Clamp::Command
 
-    # These should not be changed, but additional fields may be added to PS_COLS if necessary.
+    # This should not be changed, but additional fields may be added to PS_COLS if necessary.
     PS_COLS = { pid: '%p', ppid: '%P', cmd: '%c', args: '%a' }.freeze
+    
+    # If you need to change this, you're doing something weird. Good luck!
     SERVER_PROPERTIES = File.join(__dir__, 'server.properties').freeze
 
     FS = 31.chr # This low-ASCII control character is used as a delimiter for the ps command.
@@ -133,8 +135,7 @@ module MC
     end
 
     # Starts the Minecraft server in a detached tmux session, and waits for the Java process to
-    # start. The tmux session will close if the server is stopped or crashes. The name of the
-    # session is the same as the current working directory name.
+    # start. The tmux session will close if the server is stopped or crashes.
     def start(session)
       thread = refresh_pid
       tmux_cmd(:new_session, session)
@@ -162,6 +163,7 @@ module MC
       @state = :stopped
     end
 
+    # Restarts the Minecraft server.
     def restart(session, delay=nil)
       unless delay.to_f == 0.0
         send_message(announce_json('The server is restarting'), true)
@@ -178,6 +180,7 @@ module MC
       start(session)
     end
 
+    # Gets the server status (and PID if running).
     def status
       puts "Server is #{state}" + (state == :running ? " (PID: #{pid})." : '.')
     end
