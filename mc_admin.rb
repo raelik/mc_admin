@@ -113,10 +113,10 @@ module MC
       raise AdminError, 'Could not load server.properties.'
     end
 
-    # Spins up a background thread to watch for a server state change. Will raise an AdminError
-    # if the state does not change in 60 seconds, as this indicates some sort of exceptional
+    # Spins up a background thread to watch for a server PID change. Will raise an AdminError
+    # if the PID does not change in 60 seconds, as this indicates some sort of exceptional
     # problem (i.e. the server will not start, or shut down)
-    def refresh_state
+    def refresh_pid
       prev_pid = pid.dup
       retries = 60
       Thread.new do
@@ -136,7 +136,7 @@ module MC
     # start. The tmux session will close if the server is stopped or crashes. The name of the
     # session is the same as the current working directory name.
     def start(session)
-      thread = refresh_state
+      thread = refresh_pid
       tmux_cmd(:new_session, session)
 
       thread.join
@@ -144,18 +144,13 @@ module MC
     end
 
     # Stops the Minecraft server using RCON, and waits for the Java process to exit.
-    def stop(delay=300, now=false)
-      unless now
-        json = { color: 'yellow', text: '[SERVER ANNOUNCEMENT] ', extra: [
-          { color: 'white', text: 'The server will be shutting down in ' },
-          { color: 'aqua', text: (delay / 60.0).to_s },
-          { color: 'white', text: ' minutes. Please log off.'} ] }.to_json
-
-        send_message(json, true)
+    def stop(delay=nil)
+      unless delay.to_f == 0.0
+        send_message(announce_json('The server is shutting down'), true)
         sleep delay
       end
 
-      thread = refresh_state
+      thread = refresh_pid
       do_rcon do |rcon|
         rcon.execute('save-all')
         sleep 1
@@ -167,8 +162,13 @@ module MC
       @state = :stopped
     end
 
-    def restart(session, delay=300, now=false)
-      stop(delay, now) unless stopped?
+    def restart(session, delay=nil)
+      unless delay.to_f=0.0
+        send_message(announce_json('The server is restarting'), true)
+        sleep delay
+      end
+
+      stop unless stopped?
 
       # Wait for the tmux session to stop.
       while tmux_cmd(:list_sessions).include?(session) do
@@ -192,10 +192,18 @@ module MC
     end
 
     # Sends an arbitrary console command to the server.
-    def send_command(cmd)
+    def send_command(cmd, segmented=false, wait=0.0)
       do_rcon do |rcon|
-        rcon.execute(cmd)
+        rcon.execute(cmd, expect_segmented_response: segmented, wait: wait)
       end
+    end
+
+    # Used to create the stop/restart announce raw JSON text format
+    def announce_json(msg)
+      { color: 'yellow', text: '[SERVER ANNOUNCEMENT] ', extra: [
+        { color: 'white', text: "#{msg} in " },
+        { color: 'aqua', text: (delay / 60.0).to_s },
+        { color: 'white', text: ' minutes. Please log off.'} ] }.to_json
     end
 
     # Wrapper for tmux commands. These should be the only ones required, but any additions should
@@ -214,8 +222,9 @@ module MC
     def do_rcon
       client = Rcon::Client.new(**rcon)
       client.authenticate!(ignore_first_packet: false)
-      yield client
+      result = yield client
       client.end_session!
+      result
     end
   end
 
@@ -284,7 +293,7 @@ module MC
         super do
           raise AdminError, 'Server is already stopped.' if stopped?
           raise AdminError, 'RCON is not enabled.' unless rcon_enabled?
-          stop(delay, now?)
+          stop(now? ? nil : delay)
         end
       end
     end
@@ -313,7 +322,7 @@ module MC
       def execute
         super do
           raise AdminError, 'RCON is not enabled.' unless rcon_enabled?
-          restart(session, delay, now?)
+          restart(session, (now? ? nil : delay))
         end
       end
     end
@@ -361,13 +370,20 @@ module MC
         Immediately sends a command to the server over RCON. There is no filtering or confirmation, so USE WITH CAUTION.
       DESC
 
+      option ['-s', '--segmented'], :flag, 'Expect the server to send a segmented response for this command.'
+
+      option ['-w', '--wait'], 'WAIT', "How many seconds to wait after the trash packet. This is only\n" +
+                                       'applicable to segmented responses.', default: 0.0 do |w|
+        Float(w) rescue (raise ArgumentError, "#{w} is not a valid number of seconds.")
+      end
+
       parameter 'COMMAND', 'The command to send.'
 
       def execute
         super do
           raise AdminError, 'Server is not running.' unless running?
           raise AdminError, 'RCON is not enabled.' unless rcon_enabled?
-          puts send_command(command)
+          puts send_command(command, segmented?, wait).body
         end
       end
     end
