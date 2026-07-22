@@ -46,6 +46,8 @@ Unlike some other packages, `mc_admin.rb` makes no hard assumptions about how yo
 
 - The gems listed in the `Gemfile`. I recommend using Bundler to install these, but you don't have to. There are only four: `clamp`, `json`, `rconrb`, and `java-properties`.
 
+- RCON needs to be enabled in your `server.properties`. Make sure `enable-rcon` is set to `true`, and that your `rcon.port` and `rcon.password` are set. The script will read these values automatically from the file. 
+
 ## Setup
 
 Depending on your needs and how you installed the gem dependencies, you just need to drop `mc_admin.rb` into your Minecraft server directory. However, there are some considerations and possibly changes you'll need to make (or create additional scripts) depending on how you intend to use it.
