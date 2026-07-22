@@ -163,7 +163,7 @@ module MC
     end
 
     def restart(session, delay=nil)
-      unless delay.to_f=0.0
+      unless delay.to_f == 0.0
         send_message(announce_json('The server is restarting'), true)
         sleep delay
       end
@@ -175,7 +175,7 @@ module MC
         sleep 1
       end
 
-      start
+      start(session)
     end
 
     def status
@@ -225,6 +225,8 @@ module MC
       result = yield client
       client.end_session!
       result
+    rescue => e
+      raise AdminError, "RCON error received: #{e.message}"
     end
   end
 
@@ -372,8 +374,8 @@ module MC
 
       option ['-s', '--segmented'], :flag, 'Expect the server to send a segmented response for this command.'
 
-      option ['-w', '--wait'], 'WAIT', "How many seconds to wait after the trash packet. This is only\n" +
-                                       'applicable to segmented responses.', default: 0.0 do |w|
+      option ['-w', '--wait'], 'WAIT', "How many seconds to wait after sending the trash packet. This only\n" +
+                                       'applies to segmented responses.', default: 0.0 do |w|
         Float(w) rescue (raise ArgumentError, "#{w} is not a valid number of seconds.")
       end
 
