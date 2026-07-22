@@ -86,7 +86,7 @@ Options:
     -s, --session SESSION    The tmux session name. (default: "MCE2")
     -d, --delay DELAY        Seconds to delay before restarting. (default: 300)
     -n, --now                Restart immediately without a message.
-    -h, --help               print help```
+    -h, --help               print help
 ```
 
 ```
@@ -98,7 +98,7 @@ Usage:
   server's Java process (if it is running).
 
 Options:
-    -h, --help    print help```
+    -h, --help    print help
 ```
 
 ```
@@ -110,7 +110,7 @@ Usage:
 
 Options:
     -s, --session SESSION    The tmux session name. (default: "MCE2")
-    -h, --help               print help```
+    -h, --help               print help
 ```
 
 ```
@@ -132,7 +132,7 @@ Options:
                            dark_gray, blue, green, aqua, red, light_purple, yellow, white,
                            or a 6-digit hexadecimal code in '#<hex code>' format.
     -j, --json           Message is in raw JSON text format. COLOR will be ignored.
-    -h, --help           print help```
+    -h, --help           print help
 ```
 
 ```
