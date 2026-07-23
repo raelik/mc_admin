@@ -24,11 +24,11 @@ module MC
     CMD = "ps -a -U #{Process.uid} -ww -o " # The ps command with the necessary args.
 
     class << self
-      # Executes the 'ps' command with a user-defined format (which is set with the FS & Rows::COLS
-      # constants) and returns an Array of Row instances, with each element representing a row of
-      # output. The Row attributes are built from its FMT keys. The base set of keys must not be
-      # changed, but additional fields could be included if get_server_pid() is modified such that
-      # it requires them.
+      # Executes the 'ps' command with a user-defined format (which is built using the Row::FMT &
+      # FS constants) and returns an Array of Row instances, with each element representing a row
+      # of output. The Row attributes are built from its FMT keys. The base set of keys must not
+      # be changed, but additional fields could be included if get_server_pid() is modified such
+      # that it requires them.
       def run_ps
         fmt = Row::FMT.values.join(FS) # The user-defined format string used for the -o option.
         num = Row::FMT.keys.size       # The number of fields in the output.
@@ -39,7 +39,7 @@ module MC
 
           raise AdminError, "ps command failed with #{out.first}." unless $?.success?
 
-          rows = out[1..-1].map { |line| Row.new(line.strip.split(FS, NUM)) }
+          rows = out[1..-1].map { |line| Row.new(line.strip.split(FS, num)) }
 
           # This self-validates that the ps command supports AIX format descriptors.
           ps_cmd = rows.select { |r| r.ppid.to_i == pid }.first
@@ -55,8 +55,7 @@ module MC
       # this method.
       def get_server_pid
         (run_ps.select do |row|
-          # Filter out the current process PID just in case you're running this with jRuby.
-          Process.pid != row.pid.to_i && row.cmd == 'java' &&
+          row.cmd == 'java' &&
           (File.readlink("/proc/#{row.pid}/cwd") rescue '') == __dir__
         end).first&.pid&.to_i
       end
@@ -213,7 +212,7 @@ module MC
       unless stopped?
         unless delay == 0.0
           send_message(announce_json('The server is restarting', delay), true)
-          delay_or_abort_shutdown(delay, 'The restart had been aborted. Sorry!')
+          delay_or_abort_shutdown(delay, 'The restart has been aborted. Sorry!')
         end
 
         stop
