@@ -39,7 +39,8 @@ module MC
 
           raise AdminError, "ps command failed with #{out.first}." unless $?.success?
 
-          rows = out[1..-1].map { |line| Row.new(line.strip.split(FS, num)) }
+          out.shift # Discard the header row
+          rows = out.map { |line| Row.new(line.strip.split(FS, num)) }
 
           # This self-validates that the ps command supports AIX format descriptors.
           ps_cmd = rows.select { |r| r.ppid.to_i == pid }.first
