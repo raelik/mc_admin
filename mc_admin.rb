@@ -43,7 +43,7 @@ module MC
 
           # This self-validates that the ps command supports AIX format descriptors.
           ps_cmd = rows.select { |r| r.ppid.to_i == pid }.first
-          raise AdminError, 'ps format syntax invalid.' unless ps_cmd&.args =~ /^#{cmd}/
+          raise AdminError, 'ps format syntax invalid.' unless ps_cmd&.args =~ /^#{CMD}/
 
           rows
         end
