@@ -80,7 +80,7 @@ module MC
     # This is for a default Forge install. Change this if needed.
     SERVER_START_CMD = './run.sh'
 
-    attr_reader :properties, :rcon, :pid, :state
+    attr_reader :properties, :rcon_cfg, :pid, :state
 
     # This is used as a wrapper (via passing a block to super) by the subcommand definitions on
     # the main Admin class. You should not call MC::AdminCommand.run directly.
@@ -120,7 +120,7 @@ module MC
 
       @properties = JavaProperties.load(SERVER_PROPERTIES)
 
-      @rcon = {
+      @rcon_cfg = {
         host: '127.0.0.1',
         port: properties[:'rcon.port'].to_i,
         password: properties[:'rcon.password'].to_s
@@ -273,7 +273,7 @@ module MC
 
     # RCON client wrapper. Handles authenticating and cleanly closing the session.
     def do_rcon
-      client = Rcon::Client.new(**rcon)
+      client = Rcon::Client.new(**rcon_cfg)
       client.authenticate!(ignore_first_packet: false)
       result = yield client
       client.end_session!
