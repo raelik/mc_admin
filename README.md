@@ -1,4 +1,4 @@
-# mc_admin.rb
+# mc\_admin.rb
 
 ```
 Usage:
@@ -169,9 +169,11 @@ Unlike some other packages, `mc_admin.rb` makes no hard assumptions about how yo
 
 - A Linux host with a `ps` command with the `-o` option that accepts AIX format descriptors (such as `%p`, `%P`, `%c`, etc) and allows arbitrary characters as delimeters. This should include every modern Linux distro that uses the `procps-ng` package.
 
+- A Minecraft Forge server installed, presumably with the `nogui` option added to the `run.sh` command the Forge installer sets up (it should still work if you're using the Java GUI console). If you're not using Forge, see [Non-Forge Servers](#non-forge-servers) below.
+
 - The `tmux` command. Any moderately recent version should do.
 
-- Ruby 3.0 or higher, in some shape or form (installed on the system, `chruby`, `rvm`, `asdf`, etc). I tested it with Ruby 3.3.9, it will almost certainly work on 3.4 or maybe even 4.0.
+- Ruby 3.0 or higher, in some shape or form (installed on the system, `chruby`, `rvm`, `asdf`, etc). I tested it with Ruby 3.3.9 and 3.4.10, it may work with 4.0.
 
 - The gems listed in the `Gemfile`. I recommend using Bundler to install these, but you don't have to. There are only four: `clamp`, `json`, `rconrb`, and `java-properties`.
 
@@ -186,16 +188,26 @@ If you plan on running it via cron, and you're using some sort of Ruby version m
 
 ```bash
 #!/bin/bash
-RUBY_VERSION=3.3.9
+RUBY_VERSION=3.4.10
 
 cd "$(dirname "$0")"
 /usr/local/bin/chruby-exec $RUBY_VERSION -- bundle exec mc_admin.rb "$@"
 ```
 
-I called this `mc_admin.sh`, and dropped it in my Minecraft server directory along with `mc_admin.rb`. Beforehand, I used `ruby-install` to install Ruby 3.3.9, ran `chruby` to switch to it, and did a `bundle install` to grab the gems. I have a `@reboot` crontab entry that calls `/home/mc_user/<modpack>/mc_admin.sh start` for each modpack instance I'm running, and another that does a restart at 5 AM. I also needed to add `SHELL=/bin/bash` to my crontab. YMMV, depending on your setup and exactly which version manager you're using.
+I called this `mc_admin.sh`, and dropped it in my Minecraft server directory along with `mc_admin.rb`. Beforehand, I used `ruby-install` to install Ruby 3.4.10, ran `chruby` to switch to it, and did a `bundle install` to grab the gems. I have a `@reboot` crontab entry for each modpack instance I'm running that calls `/home/mc_user/<modpack>/mc_admin.sh start` and another that does a restart at 5 AM. I also needed to add `SHELL=/bin/bash` to my crontab. YMMV, depending on your setup and exactly which version manager you're using.
 
 ### Script Location
-Another consideration to make is exactly where your `server.properties` file is in relation to the directory that you run the Java command that starts your server. They SHOULD be the same place, but some people have very strange setups. The location of  `server.properties` is flexible in `mc_admin.rb` (the `SERVER_PROPERTIES` constant in the script can be changed), but the Java command's current working directory is not. This MUST be where you place `mc_admin.rb`, as that is one of the things it uses to pick out the correct server PID. You CAN change this if you really need to, by modifying the `get_server_pid` method in the MC::PSUtil module.
+Another consideration to make is exactly where your `server.properties` file is in relation to the directory that you installed `mc_admin.rb`. They SHOULD be the same place, but some people have complex setups and may want to relocate the script. The location of `server.properties` is very flexible in `mc_admin.rb` (the `SERVER_PROPERTIES` constant in the script can be changed), but the Minecraft server `java` command's current working directory is not so much. The code assumes you placed `mc_admin.rb` in your server directory alongside the properties file, as that is one of the things it uses to pick out the correct server PID. You could change this if you really, REALLY needed to... by:
+
+- Modifying the `get_server_pid()` method in the MC::PSUtil module to use a different method to filter out the server PID.
+
+- Updating your server's Java options to allow the previous modification to work, probably by adding a global property with `-D`.
+
+- Changing the `tmux_cmd()` method in the MC::AdminCommand class, since the new-session command string does a `cd` into the server directory to start the server under `tmux`.
+
+- Altering how the `TMUX_SESSION` constant in the main MC::Admin class is built. It uses the current working directory as the default session name and as the location of the `.tmux_session` override file, so you would likely need to change this as well.
+
+Clearly, this is alot of effort to go through, and the most likely reason for wanting to do it is to try to make a single copy of `mc_admin.rb` manage multiple instances... which I explicitly did not design it to do. Everything you need to run the script, including a wrapper for a version manager, is less than 20 kb. Disk space is not THAT limited in the 21st century, just make multiple copies of the script.
 
 ### Non-Forge Servers
 This script assumes you're using Forge and expects a `run.sh` script to be present in the server directory. If you're using something else, this is easily fixed by changing the `SERVER_START_CMD` constant in the script.

@@ -1,0 +1,26 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    clamp (1.5.2)
+    java-properties (0.3.0)
+    json (2.21.1)
+    rconrb (0.2.0)
+
+PLATFORMS
+  ruby
+  x86_64-linux
+
+DEPENDENCIES
+  clamp
+  java-properties
+  json
+  rconrb
+
+CHECKSUMS
+  clamp (1.5.2) sha256=2fed212e5c9b60447eb5097af39d4c12c3c7e6788e8d791e9c436e0e755f4adc
+  java-properties (0.3.0) sha256=0a9fdda90c25ba9ba4de0e242d954a5688629652b592aab66ed54e2b16b93093
+  json (2.21.1) sha256=13a43df75d95641443f5702dff350f237164a9d811ff0f2c2800d4d980220583
+  rconrb (0.2.0) sha256=3f3db952b431da8febd5e0fb4c36071bb0500ef6768ee8a6611b2e8c050a565b
+
+BUNDLED WITH
+  4.0.17

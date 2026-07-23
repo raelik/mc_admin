@@ -139,13 +139,13 @@ module MC
       retry_t = nil
       return unless block_given?
 
+      retries = 60 # Feel free to change this if 60 seconds isn't adequate for your server.
       old_pid = pid.dup
-      retries = 60
       error   = false
       retry_t = Thread.new do
-        while !error && retries > 0
+        while !error && old_pid == pid && retries > 0
           @pid = MC::PSUtil.get_server_pid
-          retries -= (old_pid == pid ? 1 : 60)
+          retries -= 1
           sleep 1 if retries > 0
         end
 
