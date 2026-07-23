@@ -446,7 +446,7 @@ module MC
       option %w(-w --wait), 'WAIT', "How many seconds to wait after sending the trash packet.\n" +
                                     'Ignored for non-segmented responses.', default: 0.0 do |w|
         f = Float(w) rescue (raise ArgumentError, "#{w} is not a valid number of seconds.")
-        raise ArgumentError, 'WAIT cannot be negative.' if f.negative
+        raise ArgumentError, 'WAIT cannot be negative.' if f.negative?
         f
       end
 
