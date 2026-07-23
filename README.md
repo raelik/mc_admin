@@ -48,7 +48,7 @@ Usage:
   option.
 
 Options:
-    -s, --session SESSION    The tmux session name. (default: "MCE2")
+    -s, --session SESSION    The tmux session name. (default: "MC_Server")
     -h, --help               print help
 ```
 
@@ -83,7 +83,7 @@ Usage:
   option.
 
 Options:
-    -s, --session SESSION    The tmux session name. (default: "MCE2")
+    -s, --session SESSION    The tmux session name. (default: "MC_Server")
     -d, --delay DELAY        Seconds to delay before restarting. (default: 300)
     -n, --now                Restart immediately without a message.
     -h, --help               print help
@@ -109,7 +109,7 @@ Usage:
   Runs 'tmux attach-session' with the correct session name. Can be overridden.
 
 Options:
-    -s, --session SESSION    The tmux session name. (default: "MCE2")
+    -s, --session SESSION    The tmux session name. (default: "MC_Server")
     -h, --help               print help
 ```
 
