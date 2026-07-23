@@ -181,7 +181,8 @@ Unlike some other packages, `mc_admin.rb` makes no hard assumptions about how yo
 
 Depending on your needs and how you installed the gem dependencies, you just need to drop `mc_admin.rb` into your Minecraft server directory. However, there are some considerations and possibly changes you'll need to make (or create additional scripts) depending on how you intend to use it.
 
-For instance, if you plan on running it via cron, and you're using some sort of Ruby version manager (like `chruby`), you'll probably want a simple shell script to ensure your `chruby` environment is correctly set. Here's an example of one (mine, in fact):
+### Version Managers
+If you plan on running it via cron, and you're using some sort of Ruby version manager (like `chruby`), you'll probably want a simple shell script to ensure your `chruby` environment is correctly set. Here's an example of one (mine, in fact):
 
 ```bash
 #!/bin/bash
@@ -191,8 +192,13 @@ cd "$(dirname "$0")"
 /usr/local/bin/chruby-exec $RUBY_VERSION -- bundle exec mc_admin.rb "$@"
 ```
 
-I called this `mc_admin.sh`, and dropped it in my Minecraft server directory along with `mc_admin.rb`. Beforehand, I used `ruby-install` to install Ruby 3.3.9, ran `chruby` to switch to it, and did a `bundle install` to grab the gems. I have a `@reboot` crontab entry that calls `/home/mc_user/<modpack>/mc_admin.sh start` for each modpack instance I'm running, and another that does a restart at 5 AM. I also needed to add `SHELL=/bin/bash` to my crontab. YMMV, depending on your setup.
+I called this `mc_admin.sh`, and dropped it in my Minecraft server directory along with `mc_admin.rb`. Beforehand, I used `ruby-install` to install Ruby 3.3.9, ran `chruby` to switch to it, and did a `bundle install` to grab the gems. I have a `@reboot` crontab entry that calls `/home/mc_user/<modpack>/mc_admin.sh start` for each modpack instance I'm running, and another that does a restart at 5 AM. I also needed to add `SHELL=/bin/bash` to my crontab. YMMV, depending on your setup and exactly which version manager you're using.
 
+### Script Location
 Another consideration to make is exactly where your `server.properties` file is in relation to the directory that you run the Java command that starts your server. They SHOULD be the same place, but some people have very strange setups. The location of  `server.properties` is flexible in `mc_admin.rb` (the `SERVER_PROPERTIES` constant in the script can be changed), but the Java command's current working directory is not. This MUST be where you place `mc_admin.rb`, as that is one of the things it uses to pick out the correct server PID. You CAN change this if you really need to, by modifying the `get_server_pid` method in the MC::PSUtil module.
 
+### Non-Forge Servers
+This script assumes you're using Forge and expects a `run.sh` script to be present in the server directory. If you're using something else, this is easily fixed by changing the `SERVER_START_CMD` constant in the script.
+
+### Session Names
 The last thing you may need to consider is the tmux session name that `mc_admin.rb` uses when starting or restarting the server. By default, it uses the basename of the directory the script lives in, so if your server is in `/home/mcuser/Minecraft_Server`, the tmux session will be `Minecraft_Server`. This would only really be a problem if you were running a server directly out of a `.minecraft` folder. You have two solutions for this: put a different session name in a file called `.tmux_session` in your Minecraft server directory, OR you can specify the session name with `--session` when running the `start`, `restart`, or `attach` subcommands. This is detailed in `--help` for those commands (e.g. `./mc_admin start --help`, `./mc_admin restart --help`, and `./mc_admin.rb attach --help`).
