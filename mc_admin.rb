@@ -7,26 +7,77 @@ require 'java-properties'
 
 module MC
 
+  # Utility module for running the ps command.
+  module PSUtil
+    class Row
+      # This should not be changed, but additional fields may be added if necessary.
+      FMT = { pid: '%p', ppid: '%P', cmd: '%c', args: '%a' }
+      attr_accessor *(FMT.keys)
+
+      def initialize(arr)
+        fields = FMT.keys
+        arr.each_with_index { |descriptor, i| self.send("#{fields[i]}=", descriptor.strip) }
+      end
+    end
+
+    FS  = 31.chr # This low-ASCII control character is the delimiter for the user-defined format.
+    CMD = "ps -a -U #{Process.uid} -ww -o " # The ps command with the necessary args.
+
+    class << self
+      # Executes the 'ps' command with a user-defined format (which is set with the FS & Rows::COLS
+      # constants) and returns an Array of Row instances, with each element representing a row of
+      # output. The Row attributes are built from its FMT keys. The base set of keys must not be
+      # changed, but additional fields could be included if get_server_pid() is modified such that
+      # it requires them.
+      def run_ps
+        fmt = Row::FMT.values.join(FS) # The user-defined format string used for the -o option.
+        num = Row::FMT.keys.size       # The number of fields in the output.
+        IO.popen(%Q(#{CMD} "#{fmt}")) do |ps_io|
+          pid = ps_io.pid
+          out = ps_io.readlines
+          ps_io.close
+
+          raise AdminError, "ps command failed with #{out.first}." unless $?.success?
+
+          rows = out[1..-1].map { |line| Row.new(line.strip.split(FS, NUM)) }
+
+          # This self-validates that the ps command supports AIX format descriptors.
+          ps_cmd = rows.select { |r| r.ppid.to_i == pid }.first
+          raise AdminError, 'ps format syntax invalid.' unless ps_cmd&.args =~ /^#{cmd}/
+
+          rows
+        end
+      end
+
+      # Grabs the first Java PID that is running in the same current working directory as the script
+      # running this method. If other Java utilities are run from the same working directory as your
+      # Minecraft server, additional filter conditions will need to be added to the select() call in
+      # this method.
+      def get_server_pid
+        (run_ps.select do |row|
+          # Filter out the current process PID just in case you're running this with jRuby.
+          Process.pid != row.pid.to_i && row.cmd == 'java' &&
+          (File.readlink("/proc/#{row.pid}/cwd") rescue '') == __dir__
+        end).first&.pid&.to_i
+      end
+    end
+  end
+
   class AdminError < RuntimeError; end
 
-  # This class has private methods for stopping, starting, restarting, and getting the status of
-  # a Minecraft server running on Linux. It runs the console under 'tmux' (to allow admins easy
+  # This class has private methods for stopping, starting, restarting, and getting the status of a
+  # Minecraft server running on Linux. It runs the console under 'tmux' (to give admins easy access
   # access to the console without using RCON), and assumes the admin script will be run from the
   # same directory as the server. Although it houses all of the actual command functionality, it
   # isn't intended to have run() called directly on it. The Admin class later in this file uses
   # this class as an explicit subcommand class for each command.
   class AdminCommand < Clamp::Command
 
-    # This should not be changed, but additional fields may be added to PS_COLS if necessary.
-    PS_COLS = { pid: '%p', ppid: '%P', cmd: '%c', args: '%a' }.freeze
-    
     # If you need to change this, you're doing something weird. Good luck!
-    SERVER_PROPERTIES = File.join(__dir__, 'server.properties').freeze
+    SERVER_PROPERTIES = File.join(__dir__, 'server.properties')
 
     # This is for a default Forge install. Change this if needed.
     SERVER_START_CMD = './run.sh'
-
-    FS = 31.chr # This low-ASCII control character is used as a delimiter for the ps command.
 
     attr_reader :properties, :rcon, :pid, :state
 
@@ -59,44 +110,6 @@ module MC
       File.basename(`which tmux`).strip == 'tmux'
     end
 
-    # Executes the 'ps' command with a user-defined format (which is set using the FS and PS_COLS
-    # constants) and returns an Array of Hashes, with each Array element representing a row of
-    # output. The Hash keys are the same as the PS_COLS keys. These must not be changed, but
-    # additional fields could be included if the get_server_pid() method needs them.
-    def run_ps_cmd
-      cols = PS_COLS.keys
-      fmt  = PS_COLS.values.join(FS)
-      cmd  = "ps -a -U #{Process.uid} -ww -o "
-      IO.popen(%Q(#{cmd} "#{fmt}")) do |ps_io|
-        pid = ps_io.pid
-        out = ps_io.readlines
-        ps_io.close
-
-        raise AdminError, "ps command failed with #{out.first}." unless $?.success?
-
-        result = out[1..-1].map do |line|
-          Hash[cols.zip(line.lstrip.split(FS, cols.size).map(&:strip))]
-        end
-
-        ps_cmd = result.select { |r| r[:ppid].to_i == pid }.first
-        raise AdminError, 'ps format syntax invalid.' unless ps_cmd&.dig(:args) =~ /^#{cmd}/
-
-        result
-      end
-    end
-
-    # Grabs the first Java PID that is running in the same current working directory as the script
-    # running this method. If other Java utilities are run from the same working directory as your
-    # Minecraft server, additional filter conditions will need to be added to the select() call in
-    # this method.
-    def get_server_pid
-      (run_ps_cmd.select do |row|
-        # Filter out the current process PID just in case you're running this with jRuby.
-        Process.pid != row[:pid].to_i && row[:cmd] == 'java' &&
-        (File.readlink("/proc/#{row[:pid]}/cwd") rescue '') == __dir__
-      end).first&.dig(:pid)&.to_i
-    end
-
     private
 
     # Checks if tmux is installed, parses the server.properties file, sets up the RCON connection
@@ -112,7 +125,7 @@ module MC
         password: properties[:'rcon.password'].to_s
       }
 
-      @pid   = get_server_pid
+      @pid   = MC::PSUtil.get_server_pid
       @state = pid ? :running : :stopped
     rescue Errno::ENOENT
       raise AdminError, 'Could not load server.properties.'
@@ -130,7 +143,7 @@ module MC
       error   = false
       retry_t = Thread.new do
         while !error && retries > 0
-          @pid = get_server_pid
+          @pid = MC::PSUtil.get_server_pid
           retries -= (old_pid == pid ? 1 : 60)
           sleep 1 if retries > 0
         end
@@ -274,11 +287,11 @@ module MC
   class Admin < Clamp::Command
     VERSION = '1.0.0'
     COLORS  = %w(black dark_blue dark_green dark_aqua dark_red dark_purple gold
-                 gray dark_gray blue green aqua red light_purple yellow white).freeze
+                 gray dark_gray blue green aqua red light_purple yellow white)
 
     TMUX_SESSION     = File.readlines('.tmux_session').first.strip rescue File.basename(__dir__)
     VALID_COLOR_TEXT = [COLORS[0..7].join(', '), COLORS[8..-1].join(', '),
-                       "or a 6-digit hexadecimal code in '#<hex code>' format."].freeze
+                       "or a 6-digit hexadecimal code in '#<hex code>' format."]
     COLOR_OPTION_MSG = "Color of plain text message. Ignored for JSON. Valid colors:\n  " +
                        VALID_COLOR_TEXT.join(",\n  ")
 
