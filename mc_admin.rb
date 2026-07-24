@@ -7,6 +7,13 @@ require 'java-properties'
 
 module MC
 
+  # This is for a default Forge install. Change this if needed.
+  SERVER_START_CMD = './run.sh'
+
+  # If you need to change these, you're doing something weird. Good luck!
+  SERVER_PROPERTIES = File.join(__dir__, 'server.properties')
+  TMUX_SESSION      = File.readlines('.tmux_session').first.strip rescue File.basename(__dir__)
+
   # Utility module for running the ps command.
   module PSUtil
     class Row
@@ -73,13 +80,6 @@ module MC
   # isn't intended to have run() called directly on it. The Admin class later in this file uses
   # this class as an explicit subcommand class for each command.
   class AdminCommand < Clamp::Command
-
-    # If you need to change this, you're doing something weird. Good luck!
-    SERVER_PROPERTIES = File.join(__dir__, 'server.properties')
-
-    # This is for a default Forge install. Change this if needed.
-    SERVER_START_CMD = './run.sh'
-
     attr_reader :properties, :rcon_cfg, :pid, :state
 
     # This is used as a wrapper (via passing a block to super) by the subcommand definitions on
@@ -118,7 +118,7 @@ module MC
     def setup
       raise AdminError, 'tmux is not installed!' unless tmux_installed?
 
-      @properties = JavaProperties.load(SERVER_PROPERTIES)
+      @properties = JavaProperties.load(MC::SERVER_PROPERTIES)
 
       @rcon_cfg = {
         host: '127.0.0.1',
@@ -265,7 +265,7 @@ module MC
         when :attach_session
           exec("tmux attach-session -t #{session}")
         when :new_session
-          `tmux new-session -d -s #{session} 'cd #{__dir__} && #{SERVER_START_CMD}'`
+          `tmux new-session -d -s #{session} 'cd #{__dir__} && #{MC::SERVER_START_CMD}'`
         when :list_sessions
           `tmux list-sessions -F '\#{session_name}' 2> /dev/null`.split("\n")
       end
@@ -290,7 +290,6 @@ module MC
     COLORS  = %w(black dark_blue dark_green dark_aqua dark_red dark_purple gold
                  gray dark_gray blue green aqua red light_purple yellow white)
 
-    TMUX_SESSION     = File.readlines('.tmux_session').first.strip rescue File.basename(__dir__)
     VALID_COLOR_TEXT = [COLORS[0..7].join(', '), COLORS[8..-1].join(', '),
                        "or a 6-digit hexadecimal code in '#<hex code>' format."]
     COLOR_OPTION_MSG = "Color of plain text message. Ignored for JSON. Valid colors:\n  " +
@@ -322,7 +321,7 @@ module MC
         option.
       DESC
 
-      option %w(-s --session), 'SESSION', 'The tmux session name.', default: TMUX_SESSION
+      option %w(-s --session), 'SESSION', 'The tmux session name.', default: MC::TMUX_SESSION
 
       def execute
         super do
@@ -367,7 +366,7 @@ module MC
         option.
       DESC
 
-      option %w(-s --session), 'SESSION', 'The tmux session name.', default: TMUX_SESSION
+      option %w(-s --session), 'SESSION', 'The tmux session name.', default: MC::TMUX_SESSION
 
       option %w(-d --delay), 'DELAY', 'Seconds to delay before restarting.', default: 300 do |d|
         f = Float(d) rescue (raise ArgumentError, "#{d} is not a valid number of seconds.")
@@ -401,7 +400,7 @@ module MC
         Runs 'tmux attach-session' with the correct session name. Can be overridden.
       DESC
 
-      option %w(-s --session), 'SESSION', 'The tmux session name.', default: TMUX_SESSION
+      option %w(-s --session), 'SESSION', 'The tmux session name.', default: MC::TMUX_SESSION
 
       def execute
         raise AdminError, 'Server is not running.' if stopped?
