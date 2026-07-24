@@ -181,7 +181,7 @@ Unlike some other packages, `mc_admin.rb` makes no hard assumptions about how yo
 
 ## Setup
 
-Depending on your needs and how you installed the gem dependencies, you just need to drop `mc_admin.rb` into your Minecraft server directory. However, there are some considerations and possibly changes you'll need to make (or create additional scripts) depending on how you intend to use it.
+Depending on your needs and how you installed the gem dependencies, you should just be able to drop `mc_admin.rb` into your Minecraft server directory. However, there are some considerations and possibly changes you'll need to make (or create additional scripts) depending on how you intend to use it.
 
 ### Version Managers
 If you plan on running it via cron, and you're using some sort of Ruby version manager (like `chruby`), you'll probably want a simple shell script to ensure your `chruby` environment is correctly set. Here's an example of one (mine, in fact):
