@@ -178,7 +178,7 @@ module MC
     end
 
     # Used by the stop and restart methods to trap signals in order to send an abort message
-    # if a interrupting signal is received during a pending server shutdown or restart.
+    # if an interrupting signal is received during a pending server shutdown or restart.
     def delay_with_abort_msg(delay, abort_msg)
       # Do a funky sleep loop here so unhandled signals don't cause the delay
       # to start over.
