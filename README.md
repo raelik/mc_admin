@@ -199,18 +199,18 @@ I called this `mc_admin.sh`, and dropped it in my Minecraft server directory alo
 ### Script Location
 Another consideration to make is exactly where your `server.properties` file is in relation to the directory that you installed `mc_admin.rb`. They SHOULD be the same place, but some people have complex setups and may want to relocate the script. The location of `server.properties` is very flexible in `mc_admin.rb` (the `SERVER_PROPERTIES` constant in the script can be changed), but the Minecraft server `java` command's current working directory is not so much. The code assumes you placed `mc_admin.rb` in your server directory alongside the properties file, as that is one of the things it uses to pick out the correct server PID. You could change this if you really, REALLY needed to... by:
 
-- Modifying the `get_server_pid()` method in the MC::PSUtil module to use a different method to filter out the server PID.
+- Modifying the `get_server_pid()` method to use a different way to filter out the server PID.
 
-- Updating your server's Java options to allow the previous modification to work, probably by adding a global property with `-D`.
+- Updating your server's Java options to allow the prior modification to work, probably by adding a global Java property with `-D`.
 
-- Changing the `tmux_cmd()` method in the MC::AdminCommand class, since the new-session command string does a `cd` into the server directory to start the server under `tmux`.
+- Changing the `tmux_cmd()` method's `:new-session` command string, since it does a `cd` into the server directory to start the server under `tmux`.
 
-- Altering how the `TMUX_SESSION` constant in the main MC::Admin class is built. It uses the current working directory as the default session name and as the location of the `.tmux_session` override file, so you would likely need to change this as well.
+- Altering how the `TMUX_SESSION` constant is built. It uses the current working directory as the default session name and as the location of the `.tmux_session` override file, so you would likely need to change this as well.
 
-Clearly, this is alot of effort to go through, and the most likely reason for wanting to do it is to try to make a single copy of `mc_admin.rb` manage multiple instances... which I explicitly did not design it to do. Everything you need to run the script, including a wrapper for a version manager, is less than 20 kb. Disk space is not THAT limited in the 21st century, just make multiple copies of the script.
+Clearly, this is alot of effort to go through, and the most likely reason for wanting to do it is to try to make a single copy of `mc_admin.rb` manage multiple instances... which I explicitly did not design it to do. Everything you need to run the script, including a wrapper for a version manager, is less than 20 kb. Disk space is not THAT limited in the 21st century, just make multiple copies of the script. That said, all of the changes you would need to make (except for your server's Java options) are in the main `MC` module at the top of the script, so you won't have to look far to find them if you insist on changing them.
 
 ### Non-Forge Servers
-This script assumes you're using Forge and expects a `run.sh` script to be present in the server directory. If you're using something else, this is easily fixed by changing the `SERVER_START_CMD` constant in the script.
+This script assumes you're using Forge and expects a `run.sh` script to be present in the server directory. If you're using something else, this is easily fixed by changing the `SERVER_START_CMD` constant at the top of the script.
 
 ### Session Names
 The last thing you may need to consider is the tmux session name that `mc_admin.rb` uses when starting or restarting the server. By default, it uses the basename of the directory the script lives in, so if your server is in `/home/mcuser/Minecraft_Server`, the tmux session will be `Minecraft_Server`. This would only really be a problem if you were running a server directly out of a `.minecraft` folder. You have two solutions for this: put a different session name in a file called `.tmux_session` in your Minecraft server directory, OR you can specify the session name with `--session` when running the `start`, `restart`, or `attach` subcommands. This is detailed in `--help` for those commands (e.g. `./mc_admin start --help`, `./mc_admin restart --help`, and `./mc_admin.rb attach --help`).

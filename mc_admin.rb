@@ -12,7 +12,35 @@ module MC
 
   # If you need to change these, you're doing something weird. Good luck!
   SERVER_PROPERTIES = File.join(__dir__, 'server.properties')
-  TMUX_SESSION      = File.readlines('.tmux_session').first.strip rescue File.basename(__dir__)
+  TMUX_SESSION      = File.open(File.join(__dir__, '.tmux_session')) do |dot_file|
+    dot_file.readlines.first.strip
+  end rescue File.basename(__dir__)
+
+  class << self
+    # Grabs the first Java PID that is running in the same current working directory as the script
+    # running this method. If other Java utilities are run from the same working directory as your
+    # Minecraft server, additional filter conditions will need to be added to the select() call in
+    # this method. You may need additional fields added to the PSUtil::FMT constant as well.
+    def get_server_pid
+      (PSUtil.run_ps.select do |row|
+        row.cmd == 'java' &&
+        (File.readlink("/proc/#{row.pid}/cwd") rescue '') == __dir__
+      end).first&.pid&.to_i
+    end
+
+    # Wrapper for tmux commands. These should be the only ones required, but any additions should
+    # be added to this method.
+    def tmux_cmd(cmd, session=nil)
+      case cmd
+        when :attach_session
+          exec("tmux attach-session -t #{session}")
+        when :new_session
+          `tmux new-session -d -s #{session} 'cd #{__dir__} && #{SERVER_START_CMD}'`
+        when :list_sessions
+          `tmux list-sessions -F '\#{session_name}' 2> /dev/null`.split("\n")
+      end
+    end
+  end
 
   # Utility module for running the ps command.
   module PSUtil
@@ -33,9 +61,7 @@ module MC
     class << self
       # Executes the 'ps' command with a user-defined format (which is built using the Row::FMT &
       # FS constants) and returns an Array of Row instances, with each element representing a row
-      # of output. The Row attributes are built from its FMT keys. The base set of keys must not
-      # be changed, but additional fields could be included if get_server_pid() is modified such
-      # that it requires them.
+      # of output.
       def run_ps
         fmt = Row::FMT.values.join(FS) # The user-defined format string used for the -o option.
         num = Row::FMT.keys.size       # The number of fields in the output.
@@ -56,17 +82,6 @@ module MC
 
           rows
         end
-      end
-
-      # Grabs the first Java PID that is running in the same current working directory as the script
-      # running this method. If other Java utilities are run from the same working directory as your
-      # Minecraft server, additional filter conditions will need to be added to the select() call in
-      # this method.
-      def get_server_pid
-        (run_ps.select do |row|
-          row.cmd == 'java' &&
-          (File.readlink("/proc/#{row.pid}/cwd") rescue '') == __dir__
-        end).first&.pid&.to_i
       end
     end
   end
@@ -126,7 +141,7 @@ module MC
         password: properties[:'rcon.password'].to_s
       }
 
-      @pid   = MC::PSUtil.get_server_pid
+      @pid   = MC.get_server_pid
       @state = pid ? :running : :stopped
     rescue Errno::ENOENT
       raise AdminError, 'Could not load server.properties.'
@@ -144,7 +159,7 @@ module MC
       error   = false
       retry_t = Thread.new do
         while !error && old_pid == pid && retries > 0
-          @pid = MC::PSUtil.get_server_pid
+          @pid = MC.get_server_pid
           retries -= 1
           sleep 1 if retries > 0
         end
@@ -162,9 +177,9 @@ module MC
       retry_t&.join
     end
 
-    # Used by the stop and restart methods to trap signals in order to abort a pending server
-    # shutdown or restart.
-    def delay_or_abort_shutdown(delay, abort_msg)
+    # Used by the stop and restart methods to trap signals in order to send an abort message
+    # if a interrupting signal is received during a pending server shutdown or restart.
+    def delay_with_abort_msg(delay, abort_msg)
       # Do a funky sleep loop here so unhandled signals don't cause the delay
       # to start over.
       begin
@@ -183,7 +198,7 @@ module MC
     # Starts the Minecraft server in a detached tmux session, and waits for the Java process to
     # start. The tmux session will close if the server is stopped or crashes.
     def start(session)
-      refresh_pid { tmux_cmd(:new_session, session) }
+      refresh_pid { MC.tmux_cmd(:new_session, session) }
       @state = :running
     end
 
@@ -193,7 +208,7 @@ module MC
 
       unless delay == 0.0
         send_message(announce_json('The server is shutting down', delay), true)
-        delay_or_abort_shutdown(delay, 'The shutdown has been aborted. Sorry!')
+        delay_with_abort_msg(delay, 'The shutdown has been aborted. Sorry!')
       end
 
       refresh_pid do
@@ -214,13 +229,13 @@ module MC
       unless stopped?
         unless delay == 0.0
           send_message(announce_json('The server is restarting', delay), true)
-          delay_or_abort_shutdown(delay, 'The restart has been aborted. Sorry!')
+          delay_with_abort_msg(delay, 'The restart has been aborted. Sorry!')
         end
 
         stop
 
         # Wait for the tmux session to stop.
-        sleep 1 until !tmux_cmd(:list_sessions).include?(session)
+        sleep 1 until !MC.tmux_cmd(:list_sessions).include?(session)
       end
 
       start(session)
@@ -247,7 +262,7 @@ module MC
       end
     end
 
-    # Used to create announcement raw JSON messages
+    # Used to create announcement raw JSON messages.
     def announce_json(msg, delay=nil)
       extra = delay.nil? ? [{ color: 'white', text: msg}] : [
         { color: 'white', text: "#{msg} in " },
@@ -256,19 +271,6 @@ module MC
       ]
 
       { color: 'yellow', text: '[SERVER ANNOUNCEMENT] ', extra: extra }.to_json
-    end
-
-    # Wrapper for tmux commands. These should be the only ones required, but any additions should
-    # be added to this method.
-    def tmux_cmd(cmd, session=nil)
-      case cmd
-        when :attach_session
-          exec("tmux attach-session -t #{session}")
-        when :new_session
-          `tmux new-session -d -s #{session} 'cd #{__dir__} && #{MC::SERVER_START_CMD}'`
-        when :list_sessions
-          `tmux list-sessions -F '\#{session_name}' 2> /dev/null`.split("\n")
-      end
     end
 
     # RCON client wrapper. Handles authenticating and cleanly closing the session.
@@ -404,7 +406,7 @@ module MC
 
       def execute
         raise AdminError, 'Server is not running.' if stopped?
-        tmux_cmd(:attach_session, session)
+        MC.tmux_cmd(:attach_session, session)
       end
     end
 
