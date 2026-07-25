@@ -197,17 +197,7 @@ cd "$(dirname "$0")"
 I called this `mc_admin.sh`, and dropped it in my Minecraft server directory along with `mc_admin.rb`. Beforehand, I used `ruby-install` to install Ruby 3.4.10, ran `chruby` to switch to it, and did a `bundle install` to grab the gems. I have a `@reboot` crontab entry for each modpack instance I'm running that calls `/home/mc_user/<modpack>/mc_admin.sh start` and another that does a restart at 5 AM. I also needed to add `SHELL=/bin/bash` to my crontab. YMMV, depending on your setup and exactly which version manager you're using.
 
 ### Script Location
-Another consideration to make is exactly where your `server.properties` file is in relation to the directory that you installed `mc_admin.rb`. They SHOULD be the same place, but some people have complex setups and may want to relocate the script. The location of `server.properties` is very flexible in `mc_admin.rb` (the `SERVER_PROPERTIES` constant in the script can be changed), but the Minecraft server `java` command's current working directory is not so much. The code assumes you placed `mc_admin.rb` in your server directory alongside the properties file, as that is one of the things it uses to pick out the correct server PID. You could change this if you really, REALLY needed to... by:
-
-- Modifying the `get_server_pid()` method to use a different way to filter out the server PID.
-
-- Updating your server's Java options to allow the prior modification to work, probably by adding a global Java property with `-D`.
-
-- Changing the `tmux_cmd()` method's `:new-session` command string, since it does a `cd` into the server directory to start the server under `tmux`.
-
-- Altering how the `TMUX_SESSION` constant is built. It uses the current working directory as the default session name and as the location of the `.tmux_session` override file, so you would likely need to change this as well.
-
-Clearly, this is alot of effort to go through, and the most likely reason for wanting to do it is to try to make a single copy of `mc_admin.rb` manage multiple instances... which I explicitly did not design it to do. Everything you need to run the script, including a wrapper for a version manager, is less than 20 kb. Disk space is not THAT limited in the 21st century, just make multiple copies of the script. That said, all of the changes you would need to make (except for your server's Java options) are in the main `MC` module at the top of the script, so you won't have to look far to find them if you insist on changing them.
+Another consideration to make is exactly where your `server.properties` file is in relation to the directory that you installed `mc_admin.rb`. They SHOULD be the same place, but some people have complex setups and may want to relocate the script. The `SERVER_DIRECTORY` constant at the top of the script default to the current working directory of the script, but can be overridden by setting an environment variable of the same name. This could be useful for multi-server setups where you only want one copy of `mc_admin.rb` managed in a central location.
 
 ### Non-Forge Servers
 This script assumes you're using Forge and expects a `run.sh` script to be present in the server directory. If you're using something else, this is easily fixed by changing the `SERVER_START_CMD` constant at the top of the script.

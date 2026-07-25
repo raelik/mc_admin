@@ -11,10 +11,11 @@ module MC
   SERVER_START_CMD = './run.sh'
 
   # If you need to change these, you're doing something weird. Good luck!
-  SERVER_PROPERTIES = File.join(__dir__, 'server.properties')
-  TMUX_SESSION      = File.open(File.join(__dir__, '.tmux_session')) do |dot_file|
+  SERVER_DIRECTORY  = ENV['SERVER_DIRECTORY'] || __dir__
+  SERVER_PROPERTIES = File.join(SERVER_DIRECTORY, 'server.properties')
+  TMUX_SESSION      = File.open(File.join(SERVER_DIRECTORY, '.tmux_session')) do |dot_file|
     dot_file.readlines.first.strip
-  end rescue File.basename(__dir__)
+  end rescue File.basename(SERVER_DIRECTORY)
 
   class << self
     # Grabs the first Java PID that is running in the same current working directory as the script
@@ -24,7 +25,7 @@ module MC
     def get_server_pid
       (PSUtil.run_ps.select do |row|
         row.cmd == 'java' &&
-        (File.readlink("/proc/#{row.pid}/cwd") rescue '') == __dir__
+        (File.readlink("/proc/#{row.pid}/cwd") rescue '') == SERVER_DIRECTORY
       end).first&.pid&.to_i
     end
 
@@ -35,7 +36,7 @@ module MC
         when :attach_session
           exec("tmux attach-session -t #{session}")
         when :new_session
-          `tmux new-session -d -s #{session} 'cd #{__dir__} && #{SERVER_START_CMD}'`
+          `tmux new-session -d -s #{session} 'cd #{SERVER_DIRECTORY} && #{SERVER_START_CMD}'`
         when :list_sessions
           `tmux list-sessions -F '\#{session_name}' 2> /dev/null`.split("\n")
       end
