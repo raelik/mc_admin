@@ -42,14 +42,17 @@ Usage:
   depending on how this script is being run (via cron, etc), it may still function with the
   server GUI enabled.
 
-  By default, this script uses the basename of the current working directory as the tmux
-  session name. This can be overridden by putting a different name in a .tmux_session file
-  in the Minecraft server root directory alongside this script, or you can use the --session
-  option.
+  By default, this script uses the basename of the server directory as the tmux session name.
+  This can be overridden by putting a different name in a .tmux_session file in the Minecraft
+  server root directory alongside this script, or you can use the --session option.
 
 Options:
-    -s, --session SESSION    The tmux session name. (default: "MC_Server")
-    -h, --help               print help
+    -c, --command CMD            The server start script found in the server directory.
+                                  (default: "./run.sh")
+    -s, --session SESSION        The tmux session name.
+    -h, --help                   print help
+    -d, --directory DIRECTORY    The Minecraft server directory where the Java command runs from.
+                                  (default: $SERVER_DIRECTORY, or "/home/mc_user/MC_Server")
 ```
 
 ```
@@ -62,9 +65,11 @@ Usage:
   taking the server down. The tmux session will automatically close upon shutdown.
 
 Options:
-    -d, --delay DELAY    Seconds to delay before stopping. (default: 300)
-    -n, --now            Stop immediately without a message.
-    -h, --help           print help
+    -d, --delay DELAY            Seconds to delay before stopping. (default: 300)
+    -n, --now                    Stop immediately without a message.
+    -h, --help                   print help
+    -d, --directory DIRECTORY    The Minecraft server directory where the Java command runs from.
+                                  (default: $SERVER_DIRECTORY, or "/home/mc_user/MC_Server")
 ```
 
 ```
@@ -77,16 +82,19 @@ Usage:
   close before restarting. Since this command will ignore the stop command if the server is
   already stopped, it is a safe alternative to the start command.
 
-  By default, this script uses the basename of the current working directory as the tmux
-  session name. This can be overridden by putting a different name in a .tmux_session file
-  in the Minecraft server root directory alongside this script, or you can use the --session
-  option.
+  By default, this script uses the basename of the server directory as the tmux session name.
+  This can be overridden by putting a different name in a .tmux_session file in the Minecraft
+  server root directory alongside this script, or you can use the --session option.
 
 Options:
-    -s, --session SESSION    The tmux session name. (default: "MC_Server")
-    -d, --delay DELAY        Seconds to delay before restarting. (default: 300)
-    -n, --now                Restart immediately without a message.
-    -h, --help               print help
+    -c, --command CMD            The server start script found in the server directory.
+                                  (default: "./run.sh")
+    -s, --session SESSION        The tmux session name.
+    -d, --delay DELAY            Seconds to delay before restarting. (default: 300)
+    -n, --now                    Restart immediately without a message.
+    -h, --help                   print help
+    -d, --directory DIRECTORY    The Minecraft server directory where the Java command runs from.
+                                  (default: $SERVER_DIRECTORY, or "/home/mc_user/MC_Server")
 ```
 
 ```
@@ -98,7 +106,9 @@ Usage:
   server's Java process (if it is running).
 
 Options:
-    -h, --help    print help
+    -h, --help                   print help
+    -d, --directory DIRECTORY    The Minecraft server directory where the Java command runs from.
+                                  (default: $SERVER_DIRECTORY, or "/home/mc_user/MC_Server")
 ```
 
 ```
@@ -106,11 +116,16 @@ $ ./mc_admin.rb attach --help
 Usage:
     mc_admin.rb attach [OPTIONS]
 
-  Runs 'tmux attach-session' with the correct session name. Can be overridden.
+  Runs 'tmux attach-session' with the correct session name.
 
+  By default, this script uses the basename of the server directory as the tmux session name.
+  This can be overridden by putting a different name in a .tmux_session file in the Minecraft
+  server root directory alongside this script, or you can use the --session option.
 Options:
-    -s, --session SESSION    The tmux session name. (default: "MC_Server")
-    -h, --help               print help
+    -s, --session SESSION        The tmux session name.
+    -h, --help                   print help
+    -d, --directory DIRECTORY    The Minecraft server directory where the Java command runs from.
+                                  (default: $SERVER_DIRECTORY, or "/home/mc_user/MC_Server")
 ```
 
 ```
@@ -127,12 +142,14 @@ Parameters:
     MESSAGE              The message to send.
 
 Options:
-    -c, --color COLOR    Color of plain text message. Ignored for JSON. Valid colors:
-                           black, dark_blue, dark_green, dark_aqua, dark_red, dark_purple, gold, gray,
-                           dark_gray, blue, green, aqua, red, light_purple, yellow, white,
-                           or a 6-digit hexadecimal code in '#<hex code>' format.
-    -j, --json           Message is in raw JSON text format. COLOR will be ignored.
-    -h, --help           print help
+    -c, --color COLOR            Color of plain text message. Ignored for JSON. Valid colors:
+                                   black, dark_blue, dark_green, dark_aqua, dark_red, dark_purple, gold,
+                                   gray, dark_gray, blue, green, aqua, red, light_purple, yellow, white,
+                                   or a 6-digit hexadecimal code in '#<hex code>' format.
+    -j, --json                   Message is in raw JSON text format. COLOR will be ignored.
+    -h, --help                   print help
+    -d, --directory DIRECTORY    The Minecraft server directory where the Java command runs from.
+                                  (default: $SERVER_DIRECTORY, or "/home/mc_user/MC_Server")
 ```
 
 ```
@@ -147,10 +164,12 @@ Parameters:
     COMMAND            The command to send.
 
 Options:
-    -s, --segmented    Expect the server to send a segmented response.
-    -w, --wait WAIT    How many seconds to wait after sending the trash packet.
-                       Ignored for non-segmented responses. (default: 0.0)
-    -h, --help         print help
+    -s, --segmented              Expect the server to send a segmented response.
+    -w, --wait WAIT              How many seconds to wait after sending the trash packet.
+                                 Ignored for non-segmented responses. (default: 0.0)
+    -h, --help                   print help
+    -d, --directory DIRECTORY    The Minecraft server directory where the Java command runs from.
+                                  (default: $SERVER_DIRECTORY, or "/home/mc_user/MC_Server")
 ```
 
 </details>
@@ -197,10 +216,10 @@ cd "$(dirname "$0")"
 I called this `mc_admin.sh`, and dropped it in my Minecraft server directory along with `mc_admin.rb`. Beforehand, I used `ruby-install` to install Ruby 3.4.10, ran `chruby` to switch to it, and did a `bundle install` to grab the gems. I have a `@reboot` crontab entry for each modpack instance I'm running that calls `/home/mc_user/<modpack>/mc_admin.sh start` and another that does a restart at 5 AM. I also needed to add `SHELL=/bin/bash` to my crontab. YMMV, depending on your setup and exactly which version manager you're using.
 
 ### Script Location
-Another consideration to make is exactly where your `server.properties` file is in relation to the directory that you installed `mc_admin.rb`. They SHOULD be the same place, but some people have complex setups and may want to relocate the script. The `SERVER_DIRECTORY` constant at the top of the script default to the current working directory of the script, but can be overridden by setting an environment variable of the same name. This could be useful for multi-server setups where you only want one copy of `mc_admin.rb` managed in a central location.
+Another consideration to make is exactly where your `server.properties` file is in relation to the directory that you installed `mc_admin.rb`. They SHOULD be the same place, but some people have complex setups and may want to relocate the script. There is a `--directory` option available to every subcommand to override this behavior (where necessary. It's ignored where it's not), or you can set a `SERVER_DIRECTORY` environment variable to accomplish the same thing. This could be useful for multi-server setups where you only want one copy of `mc_admin.rb` managed in a central location.
 
 ### Non-Forge Servers
 This script assumes you're using Forge and expects a `run.sh` script to be present in the server directory. If you're using something else, this is easily fixed by changing the `SERVER_START_CMD` constant at the top of the script.
 
 ### Session Names
-The last thing you may need to consider is the tmux session name that `mc_admin.rb` uses when starting or restarting the server. By default, it uses the basename of the directory the script lives in, so if your server is in `/home/mcuser/Minecraft_Server`, the tmux session will be `Minecraft_Server`. This would only really be a problem if you were running a server directly out of a `.minecraft` folder. You have two solutions for this: put a different session name in a file called `.tmux_session` in your Minecraft server directory, OR you can specify the session name with `--session` when running the `start`, `restart`, or `attach` subcommands. This is detailed in `--help` for those commands (e.g. `./mc_admin start --help`, `./mc_admin restart --help`, and `./mc_admin.rb attach --help`).
+The last thing you may need to consider is the tmux session name that `mc_admin.rb` uses when starting or restarting the server. By default, it uses the basename of the server directory (i.e. where you have the script installed, or whatever directory it was supplied with the `--directory` option or the `SERVER_DIRECTORY` environment variable), so if your server is in `/home/mc_user/Minecraft_Server`, the tmux session will be `Minecraft_Server`. This would only really be a problem if you were running a server directly out of a `.minecraft` folder. You have two solutions for this: put a different session name in a file called `.tmux_session` in your Minecraft server directory, or you can specify the session name with `--session` when running the `start`, `restart`, or `attach` subcommands. This is detailed in `--help` for those commands (e.g. `./mc_admin start --help`, `./mc_admin restart --help`, and `./mc_admin.rb attach --help`).

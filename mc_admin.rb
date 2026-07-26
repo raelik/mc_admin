@@ -7,36 +7,46 @@ require 'java-properties'
 
 module MC
 
-  # This is for a default Forge install. Change this if needed.
+  # This is the default for Forge installs. Change this if needed, though it can be overridden.
   SERVER_START_CMD = './run.sh'
 
-  # If you need to change these, you're doing something weird. Good luck!
-  SERVER_DIRECTORY  = ENV['SERVER_DIRECTORY'] || __dir__
-  SERVER_PROPERTIES = File.join(SERVER_DIRECTORY, 'server.properties')
-  TMUX_SESSION      = File.open(File.join(SERVER_DIRECTORY, '.tmux_session')) do |dot_file|
-    dot_file.readlines.first.strip
-  end rescue File.basename(SERVER_DIRECTORY)
+  # Do not change this. This is a fallback default.
+  DEFAULT_DIRECTORY = ENV['SERVER_DIRECTORY'] || __dir__
 
   class << self
+    # Helper method to get the Java server properties. The server directory can be overridden.
+    def server_properties(directory=DEFAULT_DIRECTORY)
+      JavaProperties.new(File.join(directory, 'server.properties'))
+    end
+
+    # Helper method to get the tmux session name. The server directory can be overridden.
+    def tmux_session(directory=DEFAULT_DIRECTORY)
+      File.open(File.join(directory, '.tmux_session')) do |dot_file|
+        dot_file.readlines.first.strip
+      end rescue File.basename(directory)
+    end
+
     # Grabs the first Java PID that is running in the same current working directory as the script
     # running this method. If other Java utilities are run from the same working directory as your
     # Minecraft server, additional filter conditions will need to be added to the select() call in
-    # this method. You may need additional fields added to the PSUtil::FMT constant as well.
-    def get_server_pid
+    # this method. You may need additional fields added to the PSUtil::FMT constant as well. The
+    # server directory can be overridden.
+    def get_server_pid(directory=DEFAULT_DIRECTORY)
       (PSUtil.run_ps.select do |row|
         row.cmd == 'java' &&
-        (File.readlink("/proc/#{row.pid}/cwd") rescue '') == SERVER_DIRECTORY
+        (File.readlink("/proc/#{row.pid}/cwd") rescue '') == directory
       end).first&.pid&.to_i
     end
 
     # Wrapper for tmux commands. These should be the only ones required, but any additions should
-    # be added to this method.
-    def tmux_cmd(cmd, session=nil)
+    # be added to this method. The server directory can be overridden.
+    def tmux_cmd(cmd, session=nil, directory=DEFAULT_DIRECTORY, start_cmd=SERVER_START_CMD)
+      session ||= tmux_session(directory)
       case cmd
         when :attach_session
           exec("tmux attach-session -t #{session}")
         when :new_session
-          `tmux new-session -d -s #{session} 'cd #{SERVER_DIRECTORY} && #{SERVER_START_CMD}'`
+          `tmux new-session -d -s #{session} 'cd #{directory} && #{start_cmd}'`
         when :list_sessions
           `tmux list-sessions -F '\#{session_name}' 2> /dev/null`.split("\n")
       end
@@ -98,6 +108,12 @@ module MC
   class AdminCommand < Clamp::Command
     attr_reader :properties, :rcon_cfg, :pid, :state
 
+    # This is a global option available to every subcommand that allows the server directory to
+    # be overridden. It isn't relevant to every subcommand (attach
+    option %w(-d --directory), 'DIRECTORY', 'The Minecraft server directory where the Java command' +
+                                            " runs from.\n",
+           environment_variable: 'SERVER_DIRECTORY', default: __dir__
+
     # This is used as a wrapper (via passing a block to super) by the subcommand definitions on
     # the main Admin class. You should not call MC::AdminCommand.run directly.
     def execute
@@ -134,7 +150,7 @@ module MC
     def setup
       raise AdminError, 'tmux is not installed!' unless tmux_installed?
 
-      @properties = JavaProperties.load(MC::SERVER_PROPERTIES)
+      @properties = MC.server_properties
 
       @rcon_cfg = {
         host: '127.0.0.1',
@@ -142,7 +158,7 @@ module MC
         password: properties[:'rcon.password'].to_s
       }
 
-      @pid   = MC.get_server_pid
+      @pid   = MC.get_server_pid(directory)
       @state = pid ? :running : :stopped
     rescue Errno::ENOENT
       raise AdminError, 'Could not load server.properties.'
@@ -160,7 +176,7 @@ module MC
       error   = false
       retry_t = Thread.new do
         while !error && old_pid == pid && retries > 0
-          @pid = MC.get_server_pid
+          @pid = MC.get_server_pid(directory)
           retries -= 1
           sleep 1 if retries > 0
         end
@@ -199,7 +215,7 @@ module MC
     # Starts the Minecraft server in a detached tmux session, and waits for the Java process to
     # start. The tmux session will close if the server is stopped or crashes.
     def start(session)
-      refresh_pid { MC.tmux_cmd(:new_session, session) }
+      refresh_pid { MC.tmux_cmd(:new_session, session, directory, cmd) }
       @state = :running
     end
 
@@ -293,17 +309,17 @@ module MC
     COLORS  = %w(black dark_blue dark_green dark_aqua dark_red dark_purple gold
                  gray dark_gray blue green aqua red light_purple yellow white)
 
-    VALID_COLOR_TEXT = [COLORS[0..7].join(', '), COLORS[8..-1].join(', '),
+    VALID_COLOR_TEXT = [COLORS[0..6].join(', '), COLORS[7..-1].join(', '),
                        "or a 6-digit hexadecimal code in '#<hex code>' format."]
     COLOR_OPTION_MSG = "Color of plain text message. Ignored for JSON. Valid colors:\n  " +
                        VALID_COLOR_TEXT.join(",\n  ")
 
-    self.description = <<-DESC
-      A simple Minecraft (Forge) server administration script. Must be installed and run from the
-      current working directory of the server being administered (alongside server.properties),
-      the system must have tmux installed, and it needs a version of the ps command that supports
-      AIX format descriptors and arbitrary delimiters with the -o option (i.e. all modern Linux
-      distributions using procps-ng).
+    banner <<-DESC
+      A simple Minecraft (Forge) server administration script. Should be installed and run from the
+      current working directory of the server being administered (alongside server.properties), the
+      system must have tmux installed, and it needs a version of the ps command that supports AIX
+      user-defined format descriptors and arbitrary delimiters with the -o option (i.e. all modern
+      Linux distributions using procps-ng).
     DESC
 
     option '--version', :flag, 'Show version.' do
@@ -311,20 +327,23 @@ module MC
       exit(0)
     end
 
+
     subcommand 'start', 'Starts the server with tmux.', AdminCommand do
-      self.description = <<-DESC
+      banner <<-DESC
         Starts the Minecraft server (using run.sh, which the Forge installer creates) with tmux
         to allow for easy administration. This assumes the 'nogui' option was added to run.sh, but
         depending on how this script is being run (via cron, etc), it may still function with the
         server GUI enabled.
 
-        By default, this script uses the basename of the current working directory as the tmux
-        session name. This can be overridden by putting a different name in a .tmux_session file
-        in the Minecraft server root directory alongside this script, or you can use the --session
-        option.
+        By default, this script uses the basename of the server directory as the tmux session name.
+        This can be overridden by putting a different name in a .tmux_session file in the Minecraft
+        server root directory alongside this script, or you can use the --session option.
       DESC
 
-      option %w(-s --session), 'SESSION', 'The tmux session name.', default: MC::TMUX_SESSION
+      option %w(-c --command), 'CMD', "The server start script found in the server directory.\n",
+             default: MC::SERVER_START_CMD
+
+      option %w(-s --session), 'SESSION', 'The tmux session name.'
 
       def execute
         super do
@@ -335,7 +354,7 @@ module MC
     end
 
     subcommand 'stop', 'Broadcasts a message and stops the server.', AdminCommand do
-      self.description = <<-DESC
+      banner <<-DESC
         Stops the Minecraft server using RCON. By default, it sends a server-wide message to warn
         users of the pending shutdown (which happens in 5 minutes by default), before actually
         taking the server down. The tmux session will automatically close upon shutdown.
@@ -357,19 +376,21 @@ module MC
     end
 
     subcommand 'restart', 'Broadcasts a message and restarts the server.', AdminCommand do
-      self.description = <<-DESC
+      banner <<-DESC
         Restarts the Minecraft server. This is functionally identical to using the stop command
         followed by the start command, except that the script will wait for the tmux session to
         close before restarting. Since this command will ignore the stop command if the server is
         already stopped, it is a safe alternative to the start command.
 
-        By default, this script uses the basename of the current working directory as the tmux
-        session name. This can be overridden by putting a different name in a .tmux_session file
-        in the Minecraft server root directory alongside this script, or you can use the --session
-        option.
+        By default, this script uses the basename of the server directory as the tmux session name.
+        This can be overridden by putting a different name in a .tmux_session file in the Minecraft
+        server root directory alongside this script, or you can use the --session option.
       DESC
 
-      option %w(-s --session), 'SESSION', 'The tmux session name.', default: MC::TMUX_SESSION
+      option %w(-c --command), 'CMD', "The server start script found in the server directory.\n",
+             default: MC::SERVER_START_CMD
+
+      option %w(-s --session), 'SESSION', 'The tmux session name.'
 
       option %w(-d --delay), 'DELAY', 'Seconds to delay before restarting.', default: 300 do |d|
         f = Float(d) rescue (raise ArgumentError, "#{d} is not a valid number of seconds.")
@@ -388,7 +409,7 @@ module MC
     end
 
     subcommand 'status', 'Gets the status of the server.', AdminCommand do
-      self.description = <<-DESC
+      banner <<-DESC
         Determines the status of the server (running or stopped), and also returns the PID of the
         server's Java process (if it is running).
       DESC
@@ -399,20 +420,24 @@ module MC
     end
 
     subcommand 'attach', 'Attaches to the tmux session.', AdminCommand do
-      self.description = <<-DESC
-        Runs 'tmux attach-session' with the correct session name. Can be overridden.
+      banner <<-DESC
+        Runs 'tmux attach-session' with the correct session name.
+
+        By default, this script uses the basename of the server directory as the tmux session name.
+        This can be overridden by putting a different name in a .tmux_session file in the Minecraft
+        server root directory alongside this script, or you can use the --session option.
       DESC
 
-      option %w(-s --session), 'SESSION', 'The tmux session name.', default: MC::TMUX_SESSION
+      option %w(-s --session), 'SESSION', 'The tmux session name.'
 
       def execute
         raise AdminError, 'Server is not running.' if stopped?
-        MC.tmux_cmd(:attach_session, session)
+        MC.tmux_cmd(:attach_session, session, directory)
       end
     end
 
     subcommand 'send', 'Sends a message to all connected players.', AdminCommand do
-      self.description = <<-DESC
+      banner <<-DESC
         Broadcasts a message to all players connected to the server. By default, it does this in a
         single color (white), which can be changed with the --color option. Alternatively, using
         the --json option allows Minecraft's raw JSON text format to be used for full control of
@@ -440,7 +465,7 @@ module MC
     end
 
     subcommand 'rcon', 'Send an arbitrary command to the server over RCON.', AdminCommand do
-      self.description = <<-DESC
+      banner <<-DESC
         Immediately sends a command to the server over RCON. There is no filtering or confirmation,
         so USE WITH CAUTION.
       DESC
