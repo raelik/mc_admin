@@ -48,7 +48,7 @@ Usage:
 
 Options:
     -c, --command CMD            The server start script found in the server directory.
-                                  (default: "./run.sh")
+                                  (default: $SERVER_START_CMD, or "./run.sh")
     -s, --session SESSION        The tmux session name.
     -h, --help                   print help
     -d, --directory DIRECTORY    The Minecraft server directory where the Java command runs from.
@@ -88,7 +88,7 @@ Usage:
 
 Options:
     -c, --command CMD            The server start script found in the server directory.
-                                  (default: "./run.sh")
+                                  (default: $SERVER_START_CMD, or "./run.sh")
     -s, --session SESSION        The tmux session name.
     -d, --delay DELAY            Seconds to delay before restarting. (default: 300)
     -n, --now                    Restart immediately without a message.
@@ -219,7 +219,7 @@ I called this `mc_admin.sh`, and dropped it in my Minecraft server directory alo
 Another consideration to make is exactly where your `server.properties` file is in relation to the directory that you installed `mc_admin.rb`. They SHOULD be the same place, but some people have complex setups and may want to relocate the script. There is a `--directory` option available to every subcommand to override this behavior (where necessary. It's ignored where it's not), or you can set a `SERVER_DIRECTORY` environment variable to accomplish the same thing. This could be useful for multi-server setups where you only want one copy of `mc_admin.rb` managed in a central location.
 
 ### Non-Forge Servers
-This script assumes you're using Forge and expects a `run.sh` script to be present in the server directory. If you're using something else, this is easily fixed by changing the `SERVER_START_CMD` constant at the top of the script.
+This script assumes you're using Forge and expects a `run.sh` script to be present in the server directory. If you're using something else, this is easily fixed by changing the `SERVER_START_CMD` constant at the top of the script. This changes the global default. If you have a multi-server setup with one copy of `mc_admin.rb`, there is also a `--command` option where it's relevant, and you can also set a `SERVER_START_CMD` environment variable to do the same thing.
 
 ### Session Names
 The last thing you may need to consider is the tmux session name that `mc_admin.rb` uses when starting or restarting the server. By default, it uses the basename of the server directory (i.e. where you have the script installed, or whatever directory it was supplied with the `--directory` option or the `SERVER_DIRECTORY` environment variable), so if your server is in `/home/mc_user/Minecraft_Server`, the tmux session will be `Minecraft_Server`. This would only really be a problem if you were running a server directly out of a `.minecraft` folder. You have two solutions for this: put a different session name in a file called `.tmux_session` in your Minecraft server directory, or you can specify the session name with `--session` when running the `start`, `restart`, or `attach` subcommands. This is detailed in `--help` for those commands (e.g. `./mc_admin start --help`, `./mc_admin restart --help`, and `./mc_admin.rb attach --help`).

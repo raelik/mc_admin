@@ -7,10 +7,11 @@ require 'java-properties'
 
 module MC
 
-  # This is the default for Forge installs. Change this if needed, though it can be overridden.
-  SERVER_START_CMD = './run.sh'
+  # This is the default for Forge installs. Change the default if needed, but it can be overridden
+  # on a per-command basis.
+  SERVER_START_CMD = ENV['SERVER_START_CMD'] || './run.sh'
 
-  # Do not change this. This is a fallback default.
+  # Do not change this. This is a fallback default. Individual commands can override this.
   DEFAULT_DIRECTORY = ENV['SERVER_DIRECTORY'] || __dir__
 
   class << self
@@ -341,7 +342,7 @@ module MC
       DESC
 
       option %w(-c --command), 'CMD', "The server start script found in the server directory.\n",
-             default: MC::SERVER_START_CMD
+             environment_variable: 'SERVER_START_CMD', default: MC::SERVER_START_CMD
 
       option %w(-s --session), 'SESSION', 'The tmux session name.'
 
@@ -388,7 +389,7 @@ module MC
       DESC
 
       option %w(-c --command), 'CMD', "The server start script found in the server directory.\n",
-             default: MC::SERVER_START_CMD
+             environment_variable: 'SERVER_START_CMD', default: MC::SERVER_START_CMD
 
       option %w(-s --session), 'SESSION', 'The tmux session name.'
 
