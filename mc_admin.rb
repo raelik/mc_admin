@@ -15,12 +15,12 @@ module MC
   DEFAULT_DIRECTORY = ENV['SERVER_DIRECTORY'] || __dir__
 
   class << self
-    # Helper method to get the Java server properties. The server directory can be overridden.
+    # Helper method to get the Java server properties.
     def server_properties(directory=DEFAULT_DIRECTORY)
       JavaProperties.new(File.join(directory, 'server.properties'))
     end
 
-    # Helper method to get the tmux session name. The server directory can be overridden.
+    # Helper method to get the tmux session name.
     def tmux_session(directory=DEFAULT_DIRECTORY)
       File.open(File.join(directory, '.tmux_session')) do |dot_file|
         dot_file.readlines.first.strip
@@ -30,8 +30,7 @@ module MC
     # Grabs the first Java PID that is running in the same current working directory as the script
     # running this method. If other Java utilities are run from the same working directory as your
     # Minecraft server, additional filter conditions will need to be added to the select() call in
-    # this method. You may need additional fields added to the PSUtil::FMT constant as well. The
-    # server directory can be overridden.
+    # this method. You may need additional fields added to the PSUtil::FMT constant as well.
     def get_server_pid(directory=DEFAULT_DIRECTORY)
       (PSUtil.run_ps.select do |row|
         row.cmd == 'java' &&
@@ -40,7 +39,7 @@ module MC
     end
 
     # Wrapper for tmux commands. These should be the only ones required, but any additions should
-    # be added to this method. The server directory can be overridden.
+    # be added to this method.
     def tmux_cmd(cmd, session=nil, directory=DEFAULT_DIRECTORY, start_cmd=SERVER_START_CMD)
       session ||= tmux_session(directory)
       case cmd
@@ -100,17 +99,16 @@ module MC
 
   class AdminError < RuntimeError; end
 
-  # This class has private methods for stopping, starting, restarting, and getting the status of a
-  # Minecraft server running on Linux. It runs the console under 'tmux' (to give admins easy access
-  # access to the console without using RCON), and assumes the admin script will be run from the
-  # same directory as the server. Although it houses all of the actual command functionality, it
-  # isn't intended to have run() called directly on it. The Admin class later in this file uses
-  # this class as an explicit subcommand class for each command.
+  # This class serves as the explicit subcommand class for the subcommands in the main Admin class.
+  # It holds all of the actual command functionality, provides private methods for the actual logic
+  # of all of those commands, but it isn't intended to have run() called directly on it. The main
+  # Admin class is where the subcommands are actually defined, and has run() called on it when this
+  # script is directly executed.
   class AdminCommand < Clamp::Command
     attr_reader :properties, :rcon_cfg, :pid, :state
 
     # This is a global option available to every subcommand that allows the server directory to
-    # be overridden. It isn't relevant to every subcommand (attach
+    # be overridden.
     option %w(-d --directory), 'DIRECTORY', 'The Minecraft server directory where the Java command' +
                                             " runs from.\n",
            environment_variable: 'SERVER_DIRECTORY', default: __dir__
@@ -146,12 +144,14 @@ module MC
 
     private
 
+    ### Utility methods
+
     # Checks if tmux is installed, parses the server.properties file, sets up the RCON connection
     # parameters, and then gets the server PID (if any), setting the server state based on that.
     def setup
       raise AdminError, 'tmux is not installed!' unless tmux_installed?
 
-      @properties = MC.server_properties
+      @properties = MC.server_properties(directory)
 
       @rcon_cfg = {
         host: '127.0.0.1',
@@ -212,6 +212,30 @@ module MC
         raise
       end
     end
+
+    # Used to create announcement raw JSON messages.
+    def announce_json(msg, delay=nil)
+      extra = delay.nil? ? [{ color: 'white', text: msg}] : [
+        { color: 'white', text: "#{msg} in " },
+        { color: 'aqua',  text: ('%g minutes' % [delay / 60.0]) },
+        { color: 'white', text: '. Please log off.'}
+      ]
+
+      { color: 'yellow', text: '[SERVER ANNOUNCEMENT] ', extra: extra }.to_json
+    end
+
+    # RCON client wrapper. Handles authenticating and cleanly closing the session.
+    def do_rcon
+      client = Rcon::Client.new(**rcon_cfg)
+      client.authenticate!(ignore_first_packet: false)
+      result = yield client
+      client.end_session!
+      result
+    rescue => e
+      raise AdminError, "RCON error received: #{e.message}"
+    end
+
+    ### Command logic methods
 
     # Starts the Minecraft server in a detached tmux session, and waits for the Java process to
     # start. The tmux session will close if the server is stopped or crashes.
@@ -278,28 +302,6 @@ module MC
       do_rcon do |rcon|
         rcon.execute(cmd, expect_segmented_response: segmented, wait: wait)
       end
-    end
-
-    # Used to create announcement raw JSON messages.
-    def announce_json(msg, delay=nil)
-      extra = delay.nil? ? [{ color: 'white', text: msg}] : [
-        { color: 'white', text: "#{msg} in " },
-        { color: 'aqua',  text: ('%g minutes' % [delay / 60.0]) },
-        { color: 'white', text: '. Please log off.'}
-      ]
-
-      { color: 'yellow', text: '[SERVER ANNOUNCEMENT] ', extra: extra }.to_json
-    end
-
-    # RCON client wrapper. Handles authenticating and cleanly closing the session.
-    def do_rcon
-      client = Rcon::Client.new(**rcon_cfg)
-      client.authenticate!(ignore_first_packet: false)
-      result = yield client
-      client.end_session!
-      result
-    rescue => e
-      raise AdminError, "RCON error received: #{e.message}"
     end
   end
 
