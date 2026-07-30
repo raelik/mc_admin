@@ -117,7 +117,7 @@ Usage:
 
 Options:
     -d, --directory DIRECTORY    The Minecraft server directory where the Java command runs from.
-                                  (default: $SERVER_DIRECTORY, or "/home/mc_user/MC_Server")
+                                  (default: $MC_DIRECTORY, or "/home/mc_user/MC_Server")
     -h, --help                   print help
 ```
 
@@ -136,7 +136,7 @@ Options:
     -s, --session SESSION        The tmux session name. Ignored when using a config file.
     -d, --directory DIRECTORY    The Minecraft server directory where the Java command runs from.
                                  Ignored when using a config file.
-                                  (default: $SERVER_DIRECTORY, or "/home/mc_user/MC_Server")
+                                  (default: $MC_DIRECTORY, or "/home/mc_user/MC_Server")
     -h, --help                   print help
 ```
 
@@ -161,7 +161,7 @@ Options:
     -j, --json                   Message is in raw JSON text format. COLOR will be ignored.
     -d, --directory DIRECTORY    The Minecraft server directory where the Java command runs from.
                                  Ignored when using a config file.
-                                  (default: $SERVER_DIRECTORY, or "/home/mc_user/MC_Server")
+                                  (default: $MC_DIRECTORY, or "/home/mc_user/MC_Server")
     -h, --help                   print help
 ```
 
@@ -182,7 +182,7 @@ Options:
                                  Ignored for non-segmented responses. (default: 0.0)
     -d, --directory DIRECTORY    The Minecraft server directory where the Java command runs from.
                                  Ignored when using a config file.
-                                  (default: $SERVER_DIRECTORY, or "/home/mc_user/MC_Server")
+                                  (default: $MC_DIRECTORY, or "/home/mc_user/MC_Server")
     -h, --help                   print help
 ```
 
