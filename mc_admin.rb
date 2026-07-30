@@ -619,7 +619,7 @@ module MC
       banner <<-DESC
         Validates each world defined in the config file and outputs a summary of the cofiguration.
         It ensures each world has a directory defined, that it exists, and its server.properties is
-        readable. It also ensures that if a command is specified, that it exists and is executable.
+        readable. It also validates that if a command is specified, it exists and is executable.
         Here is an example config:
 
         {
