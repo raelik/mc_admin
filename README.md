@@ -117,6 +117,7 @@ Usage:
 
 Options:
     -d, --directory DIRECTORY    The Minecraft server directory where the Java command runs from.
+                                 Ignored when using a config file.
                                   (default: $MC_DIRECTORY, or "/home/mc_user/MC_Server")
     -h, --help                   print help
 ```
