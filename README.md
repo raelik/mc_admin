@@ -4,28 +4,36 @@
 Usage:
     mc_admin.rb [OPTIONS] SUBCOMMAND [ARG] ...
 
-  A simple Minecraft (Forge) server administration script. Must be installed and run from the
-  current working directory of the server being administered (alongside server.properties),
-  the system must have tmux installed, and it needs a version of the ps command that supports
-  AIX format descriptors and arbitrary delimiters with the -o option (i.e. all modern Linux
-  distributions using procps-ng).
+  A simple Minecraft (Forge) server administration script. Can be installed and run from the
+  current working directory of a single world being administered (alongside server.properties)
+  OR from a central location using a config file for multiple worlds. The system must have tmux
+  installed, and it needs a version of the `ps` command that supports AIX user-defined format
+  descriptors and arbitrary delimiters with the -o option (i.e. all modern Linux distributions
+  using procps-ng).
 
 Parameters:
-    SUBCOMMAND    subcommand
-    [ARG] ...     subcommand arguments
+    SUBCOMMAND             subcommand
+    [ARG] ...              subcommand arguments
 
 Subcommands:
-    start         Starts the server with tmux.
-    stop          Broadcasts a message and stops the server.
-    restart       Broadcasts a message and restarts the server.
-    status        Gets the status of the server.
-    attach        Attaches to the tmux session.
-    send          Sends a message to all connected players.
-    rcon          Send an arbitrary command to the server over RCON.
+    start                  Starts the server with tmux.
+    stop                   Broadcasts a message and stops the server.
+    restart                Broadcasts a message and restarts the server.
+    status                 Gets the status of the server.
+    attach                 Attaches to the tmux session.
+    send                   Sends a message to all connected players.
+    rcon                   Send an arbitrary command to the server over RCON.
+    validate               Validate a global config file.
 
 Options:
-    --version     Show version.
-    -h, --help    print help
+    -C, --config CONFIG    An optional global config file containing one or more
+                           worlds to allow management of several servers.
+                            (default: "/home/mc_user/mc_admin.json")
+    -w, --world WORLD      Specifies the world that a subcommand should be run for.
+                           Only applicable when a config file is in use, and must be
+                           specified when there is a config file.
+    --version              Show version.
+    -h, --help             print help
 ```
 
 <details>
@@ -33,7 +41,6 @@ Options:
 <summary><h3>Subcommand Help</h3></summary>
 
 ```
-$ ./mc_admin.rb start --help
 Usage:
     mc_admin.rb start [OPTIONS]
 
@@ -42,21 +49,22 @@ Usage:
   depending on how this script is being run (via cron, etc), it may still function with the
   server GUI enabled.
 
-  By default, this script uses the basename of the server directory as the tmux session name.
-  This can be overridden by putting a different name in a .tmux_session file in the Minecraft
-  server root directory alongside this script, or you can use the --session option.
+  Without a config, this script uses the basename of the server directory as the tmux session
+  name. This can be overridden by putting a different name in a .tmux_session file in the
+  Minecraft server root directory alongside this script, or you can use the --session option.
 
 Options:
     -c, --command CMD            The server start script found in the server directory.
-                                  (default: $SERVER_START_CMD, or "./run.sh")
-    -s, --session SESSION        The tmux session name.
-    -h, --help                   print help
+                                 Ignored when using a config file containing a command.
+                                  (default: $MC_START_CMD, or "./run.sh")
+    -s, --session SESSION        The tmux session name. Ignored when using a config file.
     -d, --directory DIRECTORY    The Minecraft server directory where the Java command runs from.
-                                  (default: $SERVER_DIRECTORY, or "/home/mc_user/MC_Server")
+                                 Ignored when using a config file.
+                                  (default: $MC_DIRECTORY, or "/home/mc_user/MC_Server")
+    -h, --help                   print help
 ```
 
 ```
-$ ./mc_admin.rb stop --help
 Usage:
     mc_admin.rb stop [OPTIONS]
 
@@ -67,13 +75,13 @@ Usage:
 Options:
     -d, --delay DELAY            Seconds to delay before stopping. (default: 300)
     -n, --now                    Stop immediately without a message.
-    -h, --help                   print help
     -d, --directory DIRECTORY    The Minecraft server directory where the Java command runs from.
-                                  (default: $SERVER_DIRECTORY, or "/home/mc_user/MC_Server")
+                                 Ignored when using a config file.
+                                  (default: $MC_DIRECTORY, or "/home/mc_user/MC_Server")
+    -h, --help                   print help
 ```
 
 ```
-$ ./mc_admin.rb restart --help
 Usage:
     mc_admin.rb restart [OPTIONS]
 
@@ -82,19 +90,21 @@ Usage:
   close before restarting. Since this command will ignore the stop command if the server is
   already stopped, it is a safe alternative to the start command.
 
-  By default, this script uses the basename of the server directory as the tmux session name.
-  This can be overridden by putting a different name in a .tmux_session file in the Minecraft
-  server root directory alongside this script, or you can use the --session option.
+  Without a config, this script uses the basename of the server directory as the tmux session
+  name. This can be overridden by putting a different name in a .tmux_session file in the
+  Minecraft server root directory alongside this script, or you can use the --session option.
 
 Options:
-    -c, --command CMD            The server start script found in the server directory.
-                                  (default: $SERVER_START_CMD, or "./run.sh")
-    -s, --session SESSION        The tmux session name.
     -d, --delay DELAY            Seconds to delay before restarting. (default: 300)
     -n, --now                    Restart immediately without a message.
-    -h, --help                   print help
+    -c, --command CMD            The server start script found in the server directory.
+                                 Ignored when using a config file containing a command.
+                                  (default: $MC_START_CMD, or "./run.sh")
+    -s, --session SESSION        The tmux session name. Ignored when using a config file.
     -d, --directory DIRECTORY    The Minecraft server directory where the Java command runs from.
-                                  (default: $SERVER_DIRECTORY, or "/home/mc_user/MC_Server")
+                                 Ignored when using a config file.
+                                  (default: $MC_DIRECTORY, or "/home/mc_user/MC_Server")
+    -h, --help                   print help
 ```
 
 ```
@@ -106,9 +116,9 @@ Usage:
   server's Java process (if it is running).
 
 Options:
-    -h, --help                   print help
     -d, --directory DIRECTORY    The Minecraft server directory where the Java command runs from.
                                   (default: $SERVER_DIRECTORY, or "/home/mc_user/MC_Server")
+    -h, --help                   print help
 ```
 
 ```
@@ -118,14 +128,16 @@ Usage:
 
   Runs 'tmux attach-session' with the correct session name.
 
-  By default, this script uses the basename of the server directory as the tmux session name.
-  This can be overridden by putting a different name in a .tmux_session file in the Minecraft
-  server root directory alongside this script, or you can use the --session option.
+  Without a config, this script uses the basename of the server directory as the tmux session
+  name. This can be overridden by putting a different name in a .tmux_session file in the
+  Minecraft server root directory alongside this script, or you can use the --session option.
+
 Options:
-    -s, --session SESSION        The tmux session name.
-    -h, --help                   print help
+    -s, --session SESSION        The tmux session name. Ignored when using a config file.
     -d, --directory DIRECTORY    The Minecraft server directory where the Java command runs from.
+                                 Ignored when using a config file.
                                   (default: $SERVER_DIRECTORY, or "/home/mc_user/MC_Server")
+    -h, --help                   print help
 ```
 
 ```
@@ -147,9 +159,10 @@ Options:
                                    gray, dark_gray, blue, green, aqua, red, light_purple, yellow, white,
                                    or a 6-digit hexadecimal code in '#<hex code>' format.
     -j, --json                   Message is in raw JSON text format. COLOR will be ignored.
-    -h, --help                   print help
     -d, --directory DIRECTORY    The Minecraft server directory where the Java command runs from.
+                                 Ignored when using a config file.
                                   (default: $SERVER_DIRECTORY, or "/home/mc_user/MC_Server")
+    -h, --help                   print help
 ```
 
 ```
@@ -167,9 +180,37 @@ Options:
     -s, --segmented              Expect the server to send a segmented response.
     -w, --wait WAIT              How many seconds to wait after sending the trash packet.
                                  Ignored for non-segmented responses. (default: 0.0)
-    -h, --help                   print help
     -d, --directory DIRECTORY    The Minecraft server directory where the Java command runs from.
+                                 Ignored when using a config file.
                                   (default: $SERVER_DIRECTORY, or "/home/mc_user/MC_Server")
+    -h, --help                   print help
+```
+
+```
+$ ./mc_admin.rb validate --help
+Usage:
+    mc_admin.rb validate [OPTIONS]
+
+  Validates each world defined in the config file, and outputs a summary of the configuration.
+  Ensures that each world has a directory defined and that it exists and server.properties is
+  readable. It also ensures that if a command is specified, that it exists and is executable.
+  Here is an example config:
+  
+  {
+    "World_1": {
+      "directory": "/home/mc_user/World_1"
+    },
+    "World_2": {
+      "directory": "/home/mc_user/World_2",
+      "command": "./start_fabric.sh extra_param"
+    }
+  }
+  
+  The world names are used as tmux session names, and the --session and --directory options
+  are ignored if a config file is being used.
+
+Options:
+    -h, --help    print help
 ```
 
 </details>
@@ -180,7 +221,7 @@ Options:
 
 I created `mc_admin.rb` as a simpler alternative to [MSCS](https://github.com/MinecraftServerControl/mscs), primarily for my own use and gratification (as a long time Rubyist, I much prefer working with Ruby instead of shell scripts that call out to Perl and Python), but also because MSCS has a ton of features that I simply didn't need.
 
-I wanted something that I could use to set up a simple cronjob to restart a single Minecraft server (and start it on boot using `@reboot` in the crontab), and I wanted the server console to run under `tmux` so I could still directly interact with it in that way. I also wanted it to simply not try to do EVERYTHING. I can download the Forge/Fabric/etc installer myself, I just wanted a script I could drop in the server folder to do what I  need.
+I wanted something that I could use to set up a simple cronjob to restart a single Minecraft server (and start it on boot using `@reboot` in the crontab), and I wanted the server console to run under `tmux` so I could still directly interact with it in that way. I also wanted it to simply not try to do EVERYTHING. I can download the Forge/Fabric/etc installer myself, I just wanted a script I could drop in the server folder to do what I need. I've also added a simple config file option for managing multiple worlds with one script.
 
 ## Dependencies
 
@@ -215,11 +256,11 @@ cd "$(dirname "$0")"
 
 I called this `mc_admin.sh`, and dropped it in my Minecraft server directory along with `mc_admin.rb`. Beforehand, I used `ruby-install` to install Ruby 3.4.10, ran `chruby` to switch to it, and did a `bundle install` to grab the gems. I have a `@reboot` crontab entry for each modpack instance I'm running that calls `/home/mc_user/<modpack>/mc_admin.sh start` and another that does a restart at 5 AM. I also needed to add `SHELL=/bin/bash` to my crontab. YMMV, depending on your setup and exactly which version manager you're using.
 
-### Script Location
-Another consideration to make is exactly where your `server.properties` file is in relation to the directory that you installed `mc_admin.rb`. They SHOULD be the same place, but some people have complex setups and may want to relocate the script. There is a `--directory` option available to every subcommand to override this behavior (where necessary. It's ignored where it's not), or you can set a `SERVER_DIRECTORY` environment variable to accomplish the same thing. This could be useful for multi-server setups where you only want one copy of `mc_admin.rb` managed in a central location.
+### Script Location / Config File
+Another consideration to make is exactly where your `server.properties` file is in relation to the directory that you installed `mc_admin.rb`. They SHOULD be the same place, but some people have complex setups and may want to relocate the script. There is a `--directory` option available to every subcommand to override this behavior (where necessary. It's ignored where it's not), or you can set a `MC_DIRECTORY` environment variable to accomplish the same thing. While you could use this for a multi-server setup, it probably makes more sense to create a config file to put alongside the script (named `mc_admin.json` by default, but you can use the `--config` option to specify something else). An example config is shown by running `./mc_admin validate --help`.
 
 ### Non-Forge Servers
-This script assumes you're using Forge and expects a `run.sh` script to be present in the server directory. If you're using something else, this is easily fixed by changing the `SERVER_START_CMD` constant at the top of the script. This changes the global default. If you have a multi-server setup with one copy of `mc_admin.rb`, there is also a `--command` option where it's relevant, and you can also set a `SERVER_START_CMD` environment variable to do the same thing.
+This script assumes you're using Forge and expects a `run.sh` script to be present in the server directory. If you're using something else, this is easily fixed by changing the `MC_START_CMD` constant at the top of the script. This changes the global default. If you have a multi-server setup with one copy of `mc_admin.rb`, there is also a `--command` option where it's relevant, and you can also set a `MC_START_CMD` environment variable to do the same thing. However, as mentioned previously, using a config file probably makes more sense.
 
 ### Session Names
-The last thing you may need to consider is the tmux session name that `mc_admin.rb` uses when starting or restarting the server. By default, it uses the basename of the server directory (i.e. where you have the script installed, or whatever directory it was supplied with the `--directory` option or the `SERVER_DIRECTORY` environment variable), so if your server is in `/home/mc_user/Minecraft_Server`, the tmux session will be `Minecraft_Server`. This would only really be a problem if you were running a server directly out of a `.minecraft` folder. You have two solutions for this: put a different session name in a file called `.tmux_session` in your Minecraft server directory, or you can specify the session name with `--session` when running the `start`, `restart`, or `attach` subcommands. This is detailed in `--help` for those commands (e.g. `./mc_admin start --help`, `./mc_admin restart --help`, and `./mc_admin.rb attach --help`).
+The last thing you may need to consider is the tmux session name that `mc_admin.rb` uses when starting or restarting the server. By default, it uses the basename of the server directory (i.e. where you have the script installed, or whatever directory it was supplied with the `--directory` option or the `MC_DIRECTORY` environment variable), so if your server is in `/home/mc_user/Minecraft_Server`, the tmux session will be `Minecraft_Server`. This would only really be a problem if you were running a server directly out of a `.minecraft` folder. You have two solutions for this: put a different session name in a file called `.tmux_session` in your Minecraft server directory, or you can specify the session name with `--session` when running the `start`, `restart`, or `attach` subcommands. This is detailed in `--help` for those commands (e.g. `./mc_admin start --help`, `./mc_admin restart --help`, and `./mc_admin.rb attach --help`). When using a config file, the names of the worlds in the config file are used as the tmux session names, and these previous options are ignored.

@@ -9,15 +9,18 @@ module MC
 
   # This is the default for Forge installs. Change the default if needed, but it can be overridden
   # on a per-command basis.
-  SERVER_START_CMD = ENV['SERVER_START_CMD'] || './run.sh'
+  START_CMD = ENV['MC_START_CMD'] || './run.sh'
 
   # Do not change this. This is a fallback default. Individual commands can override this.
-  DEFAULT_DIRECTORY = ENV['SERVER_DIRECTORY'] || __dir__
+  DEFAULT_DIRECTORY = ENV['MC_DIRECTORY'] || __dir__
+
+  # This is the default config file name, which will be used if present alongside the script.
+  DEFAULT_CONFIG = File.join(__dir__, 'mc_admin.json')
 
   class << self
     # Helper method to get the Java server properties.
     def server_properties(directory=DEFAULT_DIRECTORY)
-      JavaProperties.new(File.join(directory, 'server.properties'))
+      JavaProperties.load(File.join(directory, 'server.properties'))
     end
 
     # Helper method to get the tmux session name.
@@ -40,12 +43,13 @@ module MC
 
     # Wrapper for tmux commands. These should be the only ones required, but any additions should
     # be added to this method.
-    def tmux_cmd(cmd, session=nil, directory=DEFAULT_DIRECTORY, start_cmd=SERVER_START_CMD)
+    def tmux_cmd(cmd, session=nil, directory=DEFAULT_DIRECTORY, start_cmd=START_CMD)
       session ||= tmux_session(directory)
       case cmd
         when :attach_session
           exec("tmux attach-session -t #{session}")
         when :new_session
+          puts "CMD: tmux new-session -d -s #{session} 'cd #{directory} && #{start_cmd}'"
           `tmux new-session -d -s #{session} 'cd #{directory} && #{start_cmd}'`
         when :list_sessions
           `tmux list-sessions -F '\#{session_name}' 2> /dev/null`.split("\n")
@@ -105,25 +109,59 @@ module MC
   # Admin class is where the subcommands are actually defined, and has run() called on it when this
   # script is directly executed.
   class AdminCommand < Clamp::Command
-    attr_reader :properties, :rcon_cfg, :pid, :state
+    attr_reader :config_opt, :world_opt, :config, :world, :properties, :rcon_cfg, :pid, :state
 
-    # This is a global option available to every subcommand that allows the server directory to
-    # be overridden.
-    option %w(-d --directory), 'DIRECTORY', 'The Minecraft server directory where the Java command' +
-                                            " runs from.\n",
-           environment_variable: 'SERVER_DIRECTORY', default: __dir__
+    IGNORE_CFG_MSG = 'Ignored when using a config file'
+
+    # Helper method for setting up the directory option for subcommands that use it.
+    def self.has_directory_option
+      option %w(-d --directory), 'DIRECTORY', 'The Minecraft server directory where the Java ' +
+                                              "command runs from.\n#{IGNORE_CFG_MSG}.\n",
+             environment_variable: 'MC_DIRECTORY', default: __dir__, attribute_name: :directory_opt
+    end
+
+    # Helper method for setting up the session option for subcommands that use it.
+    def self.has_session_option
+      option %w(-s --session), 'SESSION', "The tmux session name. #{IGNORE_CFG_MSG}.",
+             attribute_name: :session_opt
+    end
+
+    # Helper method for setting up the command option for subcommands that use it.
+    def self.has_command_option
+      option %w(-c --command), 'CMD', "The server start script found in the server directory.\n" +
+                                      "#{IGNORE_CFG_MSG} containing a command.\n",
+             environment_variable: 'MC_START_CMD', default: MC::START_CMD, attribute_name: :cmd_opt
+    end
+
+    # Sets the global attribute array used by validate_config()
+    def global
+      [ config_opt || MC::DEFAULT_CONFIG, world_opt ]
+    end
 
     # This is used as a wrapper (via passing a block to super) by the subcommand definitions on
     # the main Admin class. You should not call MC::AdminCommand.run directly.
-    def execute
+    def execute(global_opts=nil)
       raise AdminError, 'Invalid command.' unless block_given?
+      raise AdminError, 'MC::AdminCommand should not be run directly.' if global_opts.nil?
 
-      setup
+      setup(global_opts)
       yield
       exit(0)
     rescue AdminError => e
       STDERR.puts e.message
       exit(1)
+    end
+
+    def directory
+      world&.dig('directory') || directory_opt
+    end
+
+    def session
+      world&.dig('session') || session_opt
+    end
+
+    def cmd
+      world&.dig('cmd') || cmd_opt
     end
 
     def running?
@@ -146,10 +184,74 @@ module MC
 
     ### Utility methods
 
-    # Checks if tmux is installed, parses the server.properties file, sets up the RCON connection
-    # parameters, and then gets the server PID (if any), setting the server state based on that.
-    def setup
+    # Serves the dual purpose of setting up the global config and world options, and also validates
+    # either the entire config file or just an individual world config prior to running executing
+    # subcommand.
+    def validate_config(global_opts, complete=false)
+      g_config, g_world = global_opts
+
+      @config = begin
+        File.open(g_config) do |cfg_file|
+          JSON.parse(cfg_file.read)
+        rescue => e
+          raise AdminError, "Config file JSON invalid: #{e.message}"
+        end
+      rescue Errno::ENOENT
+        nil
+      end
+
+      @world = config&.dig(g_world)
+
+      # This is for validating the entire config file.
+      if complete
+        raise AdminError, "Config file #{g_config} not present." if config.nil?
+        raise AdminError, "No worlds defined in #{g_config}" if config.empty?
+
+        err_msg = "The following errors were found in #{g_config}:"
+
+        errors = config.keys.map { |w| validate_world(w) }.compact
+
+        raise AdminError, ([err_msg] + errors).join("\n\n") unless errors.empty?
+      else
+        raise AdminError, 'Config file present and world not specified.' if config && g_world.nil?
+        raise AdminError, "World #{g_world} not present in config." if g_world && config &&
+                                                                       world.nil?
+
+        error = g_world && validate_world(g_world)
+        raise AdminError, "The config is invalid: #{error}" if error
+      end
+    end
+
+    # Used by validate_config() to validate individual world configs.
+    def validate_world(w_name)
+      w_cfg = config[w_name]
+      w_dir = w_cfg['directory']
+      w_cmd = w_cfg['command'] || MC::START_CMD
+
+      case
+      when w_dir.nil?
+        "#{w_name} does not have required \"directory\" parameter."
+      when !Dir.exist?(w_dir)
+        "#{w_name}'s #{w_dir} directory does not exist or is not a directory."
+      when !File.readable?(File.join(w_dir, 'server.properties'))
+        "#{w_name}'s server.properties is unreadable or not present in #{w_dir}"
+      when !File.executable?(File.join(w_dir, w_cmd))
+        "#{w_name}'s command script #{w_cmd} is not executable or not present in #{w_dir}" 
+      else
+        # Set the session name and default command (if necessary) in the config.
+        w_cfg['session'] = w_name
+        w_cfg['command'] ||= w_cmd
+        nil
+      end
+    end
+
+    # Checks if tmux is installed, validates the config (if present), parses the server.properties
+    # file, sets up the RCON connection parameters, and then gets the server PID (if any), setting
+    # the server state based on that.
+    def setup(global_opts)
       raise AdminError, 'tmux is not installed!' unless tmux_installed?
+
+      validate_config(global_opts)
 
       @properties = MC.server_properties(directory)
 
@@ -317,19 +419,34 @@ module MC
     COLOR_OPTION_MSG = "Color of plain text message. Ignored for JSON. Valid colors:\n  " +
                        VALID_COLOR_TEXT.join(",\n  ")
 
+    SESSION_BANNER = <<-SESS
+      Without a config, this script uses the basename of the server directory as the tmux session
+      name. This can be overridden by putting a different name in a .tmux_session file in the
+      Minecraft server root directory alongside this script, or you can use the --session option.
+    SESS
+
     banner <<-DESC
-      A simple Minecraft (Forge) server administration script. Should be installed and run from the
-      current working directory of the server being administered (alongside server.properties), the
-      system must have tmux installed, and it needs a version of the ps command that supports AIX
-      user-defined format descriptors and arbitrary delimiters with the -o option (i.e. all modern
-      Linux distributions using procps-ng).
+      A simple Minecraft (Forge) server administration script. Can be installed and run from the
+      current working directory of a single world being administered (alongside server.properties)
+      OR from a central location using a config file for multiple worlds. The system must have tmux
+      installed, and it needs a version of the `ps` command that supports AIX user-defined format
+      descriptors and arbitrary delimiters with the -o option (i.e. all modern Linux distributions
+      using procps-ng).
     DESC
+
+    option %w(-C --config), 'CONFIG', "An optional global config file containing one or more\n" +
+                                      "worlds to allow management of several servers.\n",
+           default: MC::DEFAULT_CONFIG, attribute_name: :config_opt
+
+    option %w(-w --world), 'WORLD', "Specifies the world that a subcommand should be run for.\n" +
+                                    "Only applicable when a config file is in use, and must be\n" +
+                                    'specified when there is a config file.',
+           attribute_name: :world_opt
 
     option '--version', :flag, 'Show version.' do
       puts VERSION
       exit(0)
     end
-
 
     subcommand 'start', 'Starts the server with tmux.', AdminCommand do
       banner <<-DESC
@@ -338,19 +455,17 @@ module MC
         depending on how this script is being run (via cron, etc), it may still function with the
         server GUI enabled.
 
-        By default, this script uses the basename of the server directory as the tmux session name.
-        This can be overridden by putting a different name in a .tmux_session file in the Minecraft
-        server root directory alongside this script, or you can use the --session option.
+        #{SESSION_BANNER.gsub(/^\s+/m,'')}
       DESC
 
-      option %w(-c --command), 'CMD', "The server start script found in the server directory.\n",
-             environment_variable: 'SERVER_START_CMD', default: MC::SERVER_START_CMD
-
-      option %w(-s --session), 'SESSION', 'The tmux session name.'
+      has_command_option
+      has_session_option
+      has_directory_option
 
       def execute
-        super do
+        super(global) do
           raise AdminError, 'Server is already running.' if running?
+
           start(session)
         end
       end
@@ -369,8 +484,10 @@ module MC
 
       option %w(-n --now), :flag, 'Stop immediately without a message.'
 
+      has_directory_option
+
       def execute
-        super do
+        super(global) do
           raise AdminError, 'Server is already stopped.' if stopped?
           raise AdminError, 'RCON is not enabled.' unless rcon_enabled?
           stop(now? ? nil : delay)
@@ -385,15 +502,8 @@ module MC
         close before restarting. Since this command will ignore the stop command if the server is
         already stopped, it is a safe alternative to the start command.
 
-        By default, this script uses the basename of the server directory as the tmux session name.
-        This can be overridden by putting a different name in a .tmux_session file in the Minecraft
-        server root directory alongside this script, or you can use the --session option.
+        #{SESSION_BANNER.gsub(/^\s+/m,'')}
       DESC
-
-      option %w(-c --command), 'CMD', "The server start script found in the server directory.\n",
-             environment_variable: 'SERVER_START_CMD', default: MC::SERVER_START_CMD
-
-      option %w(-s --session), 'SESSION', 'The tmux session name.'
 
       option %w(-d --delay), 'DELAY', 'Seconds to delay before restarting.', default: 300 do |d|
         f = Float(d) rescue (raise ArgumentError, "#{d} is not a valid number of seconds.")
@@ -403,8 +513,12 @@ module MC
 
       option %w(-n --now), :flag, 'Restart immediately without a message.'
 
+      has_command_option
+      has_session_option
+      has_directory_option
+
       def execute
-        super do
+        super(global) do
           raise AdminError, 'RCON is not enabled.' unless rcon_enabled?
           restart(session, (now? ? nil : delay))
         end
@@ -417,8 +531,10 @@ module MC
         server's Java process (if it is running).
       DESC
 
+      has_directory_option
+
       def execute
-        super { status }
+        super(global) { status }
       end
     end
 
@@ -426,16 +542,18 @@ module MC
       banner <<-DESC
         Runs 'tmux attach-session' with the correct session name.
 
-        By default, this script uses the basename of the server directory as the tmux session name.
-        This can be overridden by putting a different name in a .tmux_session file in the Minecraft
-        server root directory alongside this script, or you can use the --session option.
+        #{SESSION_BANNER.gsub(/^\s+/m,'')}
       DESC
 
-      option %w(-s --session), 'SESSION', 'The tmux session name.'
+      has_session_option
+      has_directory_option
 
       def execute
-        raise AdminError, 'Server is not running.' if stopped?
-        MC.tmux_cmd(:attach_session, session, directory)
+        super(global) do
+          raise AdminError, 'Server is not running.' if stopped?
+
+          MC.tmux_cmd(:attach_session, session, directory)
+        end
       end
     end
 
@@ -456,10 +574,12 @@ module MC
 
       option %w(-j --json), :flag, 'Message is in raw JSON text format. COLOR will be ignored.'
 
+      has_directory_option
+
       parameter 'MESSAGE', 'The message to send.'
 
       def execute
-        super do
+        super(global) do
           raise AdminError, 'Server is not running.' unless running?
           raise AdminError, 'RCON is not enabled.' unless rcon_enabled?
           send_message(message, json?, color)
@@ -482,14 +602,54 @@ module MC
         f
       end
 
+      has_directory_option
+
       parameter 'COMMAND', 'The command to send.'
 
       def execute
-        super do
+        super(global) do
           raise AdminError, 'Server is not running.' unless running?
           raise AdminError, 'RCON is not enabled.' unless rcon_enabled?
           puts send_command(command, segmented?, wait).body
         end
+      end
+    end
+
+    subcommand 'validate', 'Validate a global config file.', AdminCommand do
+      banner <<-DESC
+        Validates each world defined in the config file and outputs a summary of the cofiguration.
+        Ensures that each world has a directory defined and that it exists and server.properties is
+        readable. It also ensures that if a command is specified, that it exists and is executable.
+        Here is an example config:
+
+        {
+          "World_1": {
+            "directory": "/home/mc_user/World_1"
+          },
+          "World_2": {
+            "directory": "/home/mc_user/World_2",
+            "command": "./start_fabric.sh extra_param"
+          }
+        }
+
+        The world names are used as tmux session names, and the --session and --directory options
+        are ignored if a config file is being used.
+      DESC
+
+      # Intentionally NOT calling super() here, since we're validating the entire config file
+      # and don't want setup() to get called.
+      def execute
+        config_file, _world = global
+        validate_config(global, true)
+        puts "Configuration file #{config_file} is valid. It defines the following worlds:"
+        puts
+        config.each do |world_name, world|
+          puts "#{world_name} -> directory: #{world['directory']}, command: #{world['command']}"
+        end
+        exit(0)
+      rescue AdminError => e
+        STDERR.puts e.message
+        exit(1)
       end
     end
   end
