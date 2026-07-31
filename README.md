@@ -271,5 +271,5 @@ The last thing you may need to consider is the tmux session name that `mc_admin.
 You have three solutions for this:
 
 1. Put a different session name in a file called `.tmux_session` in your Minecraft server directory.
-2. Specify the session name with `--session` when running the `start`, `restart`, or `attach` subcommands. This is detailed in `--help` for those commands (e.g. `./mc_admin start --help`, `./mc_admin restart --help`, and `./mc_admin.rb attach --help`).
+2. Specify the session name with `--session` when running the `start`, `restart`, or `attach` subcommands. This is detailed in `--help` for those commands (e.g. `./mc_admin.rb start --help`, `./mc_admin.rb restart --help`, and `./mc_admin.rb attach --help`).
 3. Use a config file. The names of the worlds in the config file are used as the tmux session names, and these previous options are ignored. This is probably the preferred option over all of the various environment variables and directory/command/session option, but the others are available for flexibility.
