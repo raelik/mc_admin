@@ -49,7 +49,6 @@ module MC
         when :attach_session
           exec("tmux attach-session -t #{session}")
         when :new_session
-          puts "CMD: tmux new-session -d -s #{session} 'cd #{directory} && #{start_cmd}'"
           `tmux new-session -d -s #{session} 'cd #{directory} && #{start_cmd}'`
         when :list_sessions
           `tmux list-sessions -F '\#{session_name}' 2> /dev/null`.split("\n")
@@ -113,29 +112,31 @@ module MC
 
     IGNORE_CFG_MSG = 'Ignored when using a config file'
 
-    # Helper method for setting up the directory option for subcommands that use it.
-    def self.has_directory_option
-      option %w(-d --directory), 'DIRECTORY', 'The Minecraft server directory where the Java ' +
-                                              "command runs from.\n#{IGNORE_CFG_MSG}.\n",
-             environment_variable: 'MC_DIRECTORY', default: __dir__, attribute_name: :directory_opt
-    end
-
-    # Helper method for setting up the session option for subcommands that use it.
-    def self.has_session_option
-      option %w(-s --session), 'SESSION', "The tmux session name. #{IGNORE_CFG_MSG}.",
-             attribute_name: :session_opt
-    end
-
-    # Helper method for setting up the command option for subcommands that use it.
-    def self.has_command_option
-      option %w(-c --command), 'CMD', "The server start script found in the server directory.\n" +
-                                      "#{IGNORE_CFG_MSG} containing a command.\n",
-             environment_variable: 'MC_START_CMD', default: MC::START_CMD, attribute_name: :cmd_opt
-    end
-
-    # Sets the global attribute array used by validate_config()
-    def global
-      [ config_opt || MC::DEFAULT_CONFIG, world_opt ]
+    # Helper method for setting up various shared subcommand options
+    def self.has_option(*options)
+      options.each do |opt|
+        case opt
+        when :directory
+          option %w(-d --directory), 'DIRECTORY', 'The Minecraft server directory where the Java ' +
+                                                  "command runs from.\n#{IGNORE_CFG_MSG}.\n",
+            environment_variable: 'MC_DIRECTORY', default: __dir__, attribute_name: :directory_opt
+        when :session
+          option %w(-s --session), 'SESSION', "The tmux session name. #{IGNORE_CFG_MSG}.",
+            attribute_name: :session_opt
+        when :command
+          option %w(-c --command), 'CMD', "The server start script found in the server directory." +
+                                          "\n#{IGNORE_CFG_MSG} containing a command.\n",
+            environment_variable: 'MC_START_CMD', default: MC::START_CMD, attribute_name: :cmd_opt
+        when :delay
+          option %w(-d --delay), 'DELAY', 'Seconds to delay.', default: 300 do |d|
+            Float(d) rescue (raise ArgumentError, "#{d} is not a valid number of seconds.")
+            raise ArgumentError, 'DELAY cannot be negative.' if f.negative
+            f
+          end
+        when :now
+          option %w(-n --now), :flag, 'Stop immediately without a message.'
+        end
+      end
     end
 
     # This is used as a wrapper (via passing a block to super) by the subcommand definitions on
@@ -152,6 +153,11 @@ module MC
       exit(1)
     end
 
+    # Returns the global attribute array used by validate_config()
+    def global
+      [ config_opt || MC::DEFAULT_CONFIG, world_opt ]
+    end
+
     def directory
       world&.dig('directory') || directory_opt
     end
@@ -161,7 +167,7 @@ module MC
     end
 
     def cmd
-      world&.dig('cmd') || cmd_opt
+      world&.dig('command') || cmd_opt
     end
 
     def running?
@@ -458,9 +464,7 @@ module MC
         #{SESSION_BANNER.gsub(/^\s+/m,'')}
       DESC
 
-      has_command_option
-      has_session_option
-      has_directory_option
+      has_option :command, :session, :directory
 
       def execute
         super(global) do
@@ -478,13 +482,7 @@ module MC
         taking the server down. The tmux session will automatically close upon shutdown.
       DESC
 
-      option %w(-d --delay), 'DELAY', 'Seconds to delay before stopping.', default: 300 do |d|
-        Float(d) rescue (raise ArgumentError, "#{d} is not a valid number of seconds.")
-      end
-
-      option %w(-n --now), :flag, 'Stop immediately without a message.'
-
-      has_directory_option
+      has_option :delay, :now, :directory
 
       def execute
         super(global) do
@@ -505,17 +503,7 @@ module MC
         #{SESSION_BANNER.gsub(/^\s+/m,'')}
       DESC
 
-      option %w(-d --delay), 'DELAY', 'Seconds to delay before restarting.', default: 300 do |d|
-        f = Float(d) rescue (raise ArgumentError, "#{d} is not a valid number of seconds.")
-        raise ArgumentError, 'DELAY cannot be negative.' if f.negative
-        f
-      end
-
-      option %w(-n --now), :flag, 'Restart immediately without a message.'
-
-      has_command_option
-      has_session_option
-      has_directory_option
+      has_option :delay, :now, :command, :session, :directory
 
       def execute
         super(global) do
@@ -531,7 +519,7 @@ module MC
         server's Java process (if it is running).
       DESC
 
-      has_directory_option
+      has_option :directory
 
       def execute
         super(global) { status }
@@ -545,8 +533,7 @@ module MC
         #{SESSION_BANNER.gsub(/^\s+/m,'')}
       DESC
 
-      has_session_option
-      has_directory_option
+      has_option :session, :directory
 
       def execute
         super(global) do
@@ -574,7 +561,7 @@ module MC
 
       option %w(-j --json), :flag, 'Message is in raw JSON text format. COLOR will be ignored.'
 
-      has_directory_option
+      has_option :directory
 
       parameter 'MESSAGE', 'The message to send.'
 
@@ -602,7 +589,7 @@ module MC
         f
       end
 
-      has_directory_option
+      has_option :directory
 
       parameter 'COMMAND', 'The command to send.'
 
