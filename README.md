@@ -73,8 +73,8 @@ Usage:
   taking the server down. The tmux session will automatically close upon shutdown.
 
 Options:
-    -d, --delay DELAY            Seconds to delay. (default: 300)
-    -n, --now                    Stop immediately without a message.
+    -d, --delay DELAY            Seconds to delay shutdown. (default: 300)
+    -n, --now                    Immediately shutdown without a message.
     -d, --directory DIRECTORY    The Minecraft server directory where the Java command runs from.
                                  Ignored when using a config file.
                                   (default: $MC_DIRECTORY, or "/home/mc_user/MC_Server")
@@ -95,8 +95,8 @@ Usage:
   Minecraft server root directory alongside this script, or you can use the --session option.
 
 Options:
-    -d, --delay DELAY            Seconds to delay. (default: 300)
-    -n, --now                    Restart immediately without a message.
+    -d, --delay DELAY            Seconds to delay restart. (default: 300)
+    -n, --now                    Immediately restart without a message.
     -c, --command CMD            The server start script found in the server directory.
                                  Ignored when using a config file containing a command.
                                   (default: $MC_START_CMD, or "./run.sh")

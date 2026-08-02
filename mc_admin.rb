@@ -113,7 +113,7 @@ module MC
     IGNORE_CFG_MSG = 'Ignored when using a config file'
 
     # Helper method for setting up various shared subcommand options
-    def self.has_option(*options)
+    def self.has_option(*options, action: nil)
       options.each do |opt|
         case opt
         when :directory
@@ -128,24 +128,24 @@ module MC
                                           "\n#{IGNORE_CFG_MSG} containing a command.\n",
             environment_variable: 'MC_START_CMD', default: MC::START_CMD, attribute_name: :cmd_opt
         when :delay
-          option %w(-d --delay), 'DELAY', 'Seconds to delay.', default: 300 do |d|
+          option %w(-d --delay), 'DELAY', "Seconds to delay #{action}.", default: 300 do |d|
             Float(d) rescue (raise ArgumentError, "#{d} is not a valid number of seconds.")
             raise ArgumentError, 'DELAY cannot be negative.' if f.negative
             f
           end
         when :now
-          option %w(-n --now), :flag, 'Stop immediately without a message.'
+          option %w(-n --now), :flag, "Immediately #{action} without a message."
         end
       end
     end
 
     # This is used as a wrapper (via passing a block to super) by the subcommand definitions on
     # the main Admin class. You should not call MC::AdminCommand.run directly.
-    def execute(global_opts=nil)
+    def execute(cfg_file=nil, wrld_nm=nil)
       raise AdminError, 'Invalid command.' unless block_given?
-      raise AdminError, 'MC::AdminCommand should not be run directly.' if global_opts.nil?
+      raise AdminError, 'MC::AdminCommand should not be run directly.' if cfg_file.nil?
 
-      setup(global_opts)
+      setup(cfg_file, wrld_nm)
       yield
       exit(0)
     rescue AdminError => e
@@ -153,9 +153,9 @@ module MC
       exit(1)
     end
 
-    # Returns the global attribute array used by validate_config()
-    def global
-      [ config_opt || MC::DEFAULT_CONFIG, world_opt ]
+    # Returns the specified config file option or the default.
+    def config_file
+      config_opt || MC::DEFAULT_CONFIG
     end
 
     def directory
@@ -193,12 +193,10 @@ module MC
     # Serves the dual purpose of setting up the global config and world options, and also validates
     # either the entire config file or just an individual world config prior to running executing
     # subcommand.
-    def validate_config(global_opts, complete=false)
-      g_config, g_world = global_opts
-
+    def validate_config(cfg_file, wrld_nm, complete=false)
       @config = begin
-        File.open(g_config) do |cfg_file|
-          JSON.parse(cfg_file.read)
+        File.open(cfg_file) do |cfg|
+          JSON.parse(cfg.read)
         rescue => e
           raise AdminError, "Config file JSON invalid: #{e.message}"
         end
@@ -206,46 +204,46 @@ module MC
         nil
       end
 
-      @world = config&.dig(g_world)
+      @world = config&.dig(wrld_nm)
 
       # This is for validating the entire config file.
       if complete
-        raise AdminError, "Config file #{g_config} not present." if config.nil?
-        raise AdminError, "No worlds defined in #{g_config}" if config.empty?
+        raise AdminError, "Config file #{cfg_file} not present." if config.nil?
+        raise AdminError, "No worlds defined in #{cfg_file}" if config.empty?
 
-        err_msg = "The following errors were found in #{g_config}:"
+        err_msg = "The following errors were found in #{cfg_file}:"
 
         errors = config.keys.map { |w| validate_world(w) }.compact
 
         raise AdminError, ([err_msg] + errors).join("\n\n") unless errors.empty?
       else
-        raise AdminError, 'Config file present and world not specified.' if config && g_world.nil?
-        raise AdminError, "World #{g_world} not present in config." if g_world && config &&
+        raise AdminError, 'Config file present and world not specified.' if config && wrld_nm.nil?
+        raise AdminError, "World #{g_world} not present in config." if wrld_nm && config &&
                                                                        world.nil?
 
-        error = g_world && validate_world(g_world)
+        error = wrld_nm && validate_world(wrld_nm)
         raise AdminError, "The config is invalid: #{error}" if error
       end
     end
 
     # Used by validate_config() to validate individual world configs.
-    def validate_world(w_name)
-      w_cfg = config[w_name]
+    def validate_world(wrld_nm)
+      w_cfg = config[wrld_nm]
       w_dir = w_cfg['directory']
       w_cmd = w_cfg['command'] || MC::START_CMD
 
       case
       when w_dir.nil?
-        "#{w_name} does not have required \"directory\" parameter."
+        "#{wrld_nm} does not have required \"directory\" parameter."
       when !Dir.exist?(w_dir)
-        "#{w_name}'s #{w_dir} directory does not exist or is not a directory."
+        "#{wrld_nm}'s #{w_dir} directory does not exist or is not a directory."
       when !File.readable?(File.join(w_dir, 'server.properties'))
-        "#{w_name}'s server.properties is unreadable or not present in #{w_dir}"
+        "#{wrld_nm}'s server.properties is unreadable or not present in #{w_dir}"
       when !File.executable?(File.join(w_dir, w_cmd))
-        "#{w_name}'s command script #{w_cmd} is not executable or not present in #{w_dir}" 
+        "#{wrld_nm}'s command script #{w_cmd} is not executable or not present in #{w_dir}" 
       else
         # Set the session name and default command (if necessary) in the config.
-        w_cfg['session'] = w_name
+        w_cfg['session'] = wrld_nm
         w_cfg['command'] ||= w_cmd
         nil
       end
@@ -254,10 +252,10 @@ module MC
     # Checks if tmux is installed, validates the config (if present), parses the server.properties
     # file, sets up the RCON connection parameters, and then gets the server PID (if any), setting
     # the server state based on that.
-    def setup(global_opts)
+    def setup(cfg_file, wrld_nm)
       raise AdminError, 'tmux is not installed!' unless tmux_installed?
 
-      validate_config(global_opts)
+      validate_config(cfg_file, wrld_nm)
 
       @properties = MC.server_properties(directory)
 
@@ -391,11 +389,6 @@ module MC
       start(session)
     end
 
-    # Gets the server status (and PID if running).
-    def status
-      puts "Server is #{state}" + (state == :running ? " (PID: #{pid})." : '.')
-    end
-
     # Sends a message to all connected players.
     def send_message(message, is_json=false, color='white')
       json = is_json ? message : ({ text: message, color: color }.to_json)
@@ -467,7 +460,7 @@ module MC
       has_option :command, :session, :directory
 
       def execute
-        super(global) do
+        super(config_file, world_opt) do
           raise AdminError, 'Server is already running.' if running?
 
           start(session)
@@ -482,10 +475,10 @@ module MC
         taking the server down. The tmux session will automatically close upon shutdown.
       DESC
 
-      has_option :delay, :now, :directory
+      has_option :delay, :now, :directory, action: 'shutdown'
 
       def execute
-        super(global) do
+        super(config_file, world_opt) do
           raise AdminError, 'Server is already stopped.' if stopped?
           raise AdminError, 'RCON is not enabled.' unless rcon_enabled?
           stop(now? ? nil : delay)
@@ -503,10 +496,10 @@ module MC
         #{SESSION_BANNER.gsub(/^\s+/m,'')}
       DESC
 
-      has_option :delay, :now, :command, :session, :directory
+      has_option :delay, :now, :command, :session, :directory, action: 'restart'
 
       def execute
-        super(global) do
+        super(config_file, world_opt) do
           raise AdminError, 'RCON is not enabled.' unless rcon_enabled?
           restart(session, (now? ? nil : delay))
         end
@@ -522,7 +515,9 @@ module MC
       has_option :directory
 
       def execute
-        super(global) { status }
+        super(config_file, world_opt) do
+          puts "Server is #{state}" + (state == :running ? " (PID: #{pid})." : '.')
+        end
       end
     end
 
@@ -536,7 +531,7 @@ module MC
       has_option :session, :directory
 
       def execute
-        super(global) do
+        super(config_file, world_opt) do
           raise AdminError, 'Server is not running.' if stopped?
 
           MC.tmux_cmd(:attach_session, session, directory)
@@ -566,7 +561,7 @@ module MC
       parameter 'MESSAGE', 'The message to send.'
 
       def execute
-        super(global) do
+        super(config_file, world_opt) do
           raise AdminError, 'Server is not running.' unless running?
           raise AdminError, 'RCON is not enabled.' unless rcon_enabled?
           send_message(message, json?, color)
@@ -594,7 +589,7 @@ module MC
       parameter 'COMMAND', 'The command to send.'
 
       def execute
-        super(global) do
+        super(config_file, world_opt) do
           raise AdminError, 'Server is not running.' unless running?
           raise AdminError, 'RCON is not enabled.' unless rcon_enabled?
           puts send_command(command, segmented?, wait).body
@@ -626,12 +621,11 @@ module MC
       # Intentionally NOT calling super() here, since we're validating the entire config file
       # and don't want setup() to get called.
       def execute
-        config_file, _world = global
-        validate_config(global, true)
+        validate_config(config_file, nil, true)
         puts "Configuration file #{config_file} is valid. It defines the following worlds:"
         puts
-        config.each do |world_name, world|
-          puts "#{world_name} -> directory: #{world['directory']}, command: #{world['command']}"
+        config.each do |wrld_nm, world|
+          puts "#{wrld_nm} -> directory: #{world['directory']}, command: #{world['command']}"
         end
         exit(0)
       rescue AdminError => e
