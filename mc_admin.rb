@@ -60,17 +60,23 @@ module MC
   module PSUtil
     class Row
       # This should not be changed, but additional fields may be added if necessary.
-      FMT = { pid: '%p', ppid: '%P', cmd: '%c', args: '%a' }
+      FMT = { pid: '%p', cmd: '%c', args: '%a' }
       attr_accessor *(FMT.keys)
 
+      # When provided an array of field values, it assigns them to the appropriate attribute
+      # according to their index in the array. This order is defined by the order of the keys
+      # in the FMT constant.
       def initialize(arr)
         fields = FMT.keys
-        arr.each_with_index { |descriptor, i| self.send("#{fields[i]}=", descriptor.strip) }
+        count  = fields.size
+        raise ArgumentError, "Invalid column count. Must be #{count}." unless arr.size == count
+
+        count.times { |i| self.send("#{fields[i]}=", arr[i].strip) }
       end
     end
 
     FS  = 31.chr # This low-ASCII control character is the delimiter for the user-defined format.
-    CMD = "ps -a -U #{Process.uid} -ww -o " # The ps command with the necessary args.
+    CMD = "ps -a -U #{Process.uid} -ww -o " # The ps command without the format string.
 
     class << self
       # Executes the 'ps' command with a user-defined format (which is built using the Row::FMT &
@@ -79,7 +85,9 @@ module MC
       def run_ps
         fmt = Row::FMT.values.join(FS) # The user-defined format string used for the -o option.
         num = Row::FMT.keys.size       # The number of fields in the output.
-        IO.popen(%Q(#{CMD} "#{fmt}")) do |ps_io|
+        cmd = CMD.split + [fmt]        # The Array-formatted ps command with the format string.
+
+        IO.popen(cmd, err: %i(child out)) do |ps_io|
           pid = ps_io.pid
           out = ps_io.readlines
           ps_io.close
@@ -90,7 +98,7 @@ module MC
           rows = out.map { |line| Row.new(line.strip.split(FS, num)) }
 
           # This self-validates that the ps command supports AIX format descriptors.
-          ps_cmd = rows.select { |r| r.ppid.to_i == pid }.first
+          ps_cmd = rows.select { |r| r.pid.to_i == pid }.first
           raise AdminError, 'ps format syntax invalid.' unless ps_cmd&.cmd == 'ps' &&
                                                                ps_cmd&.args =~ /^#{CMD}/
 
@@ -208,7 +216,7 @@ module MC
 
       # This is for validating the entire config file.
       if complete
-        raise AdminError, "Config file #{cfg_file} not present." if config.nil?
+        raise AdminError, "Config file #{cfg_file} not found." if config.nil?
         raise AdminError, "No worlds defined in #{cfg_file}" if config.empty?
 
         err_msg = "The following errors were found in #{cfg_file}:"
