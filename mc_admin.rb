@@ -225,7 +225,7 @@ module MC
 
         raise AdminError, ([err_msg] + errors).join("\n\n") unless errors.empty?
       else
-        raise AdminError, "Config file #{cfg_file} not found." if config.nil?
+        raise AdminError, "Config file #{cfg_file} not found." if wrld_nm && config.nil?
         raise AdminError, 'Config file present and world not specified.' if config && wrld_nm.nil?
         raise AdminError, "World #{wrld_nm} not present in config." if wrld_nm && world.nil?
 
